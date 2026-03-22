@@ -1,7 +1,7 @@
 // api/analyze.js — Vercel Serverless Function
 // Sanitización, rate limiting, CORS, Supabase cache desde backend
 
-import { createClient } from '@supabase/supabase-js'
+require { createClient } from '@supabase/supabase-js'
 
 const ALLOWED_ORIGIN    = process.env.ALLOWED_ORIGIN || ''
 const MAX_INPUT_LENGTH  = 120
