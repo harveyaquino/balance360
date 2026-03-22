@@ -1,7 +1,7 @@
 // src/App.jsx
 import DOMPurify from 'dompurify'
 import { useState } from 'react'
-import { useArgos } from './hooks/useBalance360'
+import { useBalance360 } from './hooks/useBalance360'
 import { ScoreRing } from './components/ScoreRing'
 import { FrenteCard } from './components/FrenteCard'
 import { AgentSteps } from './components/AgentSteps'
@@ -142,7 +142,7 @@ function Results({ data, fromCache, onReset }) {
 }
 
 export default function App() {
-  const { status, data, error, steps, fromCache, analyze, reset } = useArgos()
+  const { status, data, error, steps, fromCache, analyze, reset } = useBalance360()
 
   return (
     <div className="min-h-screen bg-balance360-bg flex flex-col">
