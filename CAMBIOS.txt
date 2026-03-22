@@ -1,0 +1,49 @@
+BALANCE360 — 360° Digital Intelligence
+VeyharCorp · Harvey Aquino
+=====================================
+
+v0.3.0 — Deploy-ready (GitHub + Supabase + Vercel)
+----------------------------------------------------
+CAMBIOS:
+- api/analyze.js refactorizado:
+  · Cache lookup desde el backend con SUPABASE_SERVICE_ROLE_KEY
+  · Persistencia de audits y benchmarks desde serverless
+  · Nunca expone keys ni stack traces
+- src/hooks/useArgos.js simplificado:
+  · Backend maneja todo el DB — hook solo consume la API
+  · Flag from_cache propagado desde servidor
+- src/App.jsx:
+  · Badge "desde cache" en resultados
+  · Versión bumpeada a v0.3.0
+- supabase/schema.sql:
+  · Agregada función increment_queries(uid)
+- README.md:
+  · Instrucciones completas de deploy en 3 pasos
+  · Tabla de environment variables para Vercel
+  · Checklist de seguridad pre-deploy
+
+v0.2.0 — Supabase integrado
+-----------------------------
+- Schema completo con RLS (audits, benchmarks, profiles)
+- src/lib/supabase.js + src/lib/db.js
+- Cache con TTL 7 días
+- Rankings sectoriales
+
+v0.1.0 — MVP inicial
+---------------------
+- React + Vite + Tailwind
+- api/analyze.js con sanitización y rate limiting
+- Security headers en vercel.json
+- Componentes: ScoreRing, FrenteCard, AgentSteps
+- DOMPurify anti-XSS
+
+PENDIENTE v0.4.0:
+- Auth UI (login/registro con Supabase Auth)
+- Panel historial del usuario
+- Benchmark sectorial en UI
+- Export PDF
+
+REGLA DE ORO:
+- .env nunca se commitea
+- SUPABASE_SERVICE_ROLE_KEY solo en variables de servidor (no VITE_*)
+- npm audit antes de cada deploy

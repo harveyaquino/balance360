@@ -1,0 +1,97 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * { box-sizing: border-box; }
+
+  body {
+    background-color: #080B10;
+    color: #E2E8F0;
+    font-family: 'Space Grotesk', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
+  }
+
+  ::selection {
+    background: rgba(0, 229, 255, 0.2);
+    color: #00E5FF;
+  }
+}
+
+@layer components {
+  .balance360-card {
+    @apply bg-balance360-card border border-balance360-border rounded-xl;
+  }
+
+  .balance360-input {
+    @apply bg-balance360-surface border border-balance360-border rounded-lg px-4 py-3
+           text-balance360-text placeholder-balance360-muted font-mono text-sm
+           focus:outline-none focus:border-balance360-accent focus:ring-1 focus:ring-balance360-accent/30
+           transition-colors duration-200 w-full;
+  }
+
+  .balance360-btn {
+    @apply bg-balance360-accent text-balance360-bg font-semibold px-6 py-3 rounded-lg
+           hover:bg-balance360-dim transition-colors duration-200
+           disabled:opacity-40 disabled:cursor-not-allowed
+           focus:outline-none focus:ring-2 focus:ring-balance360-accent/50;
+  }
+
+  .score-ring {
+    transform-origin: center;
+    transition: stroke-dashoffset 1.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .step-item {
+    @apply flex items-start gap-3 py-2 border-b border-balance360-border/50 last:border-0;
+  }
+
+  .frente-card {
+    @apply balance360-card p-4 hover:border-balance360-accent/40 transition-colors duration-200 cursor-default;
+  }
+}
+
+@keyframes scanline {
+  0% { transform: translateY(-100%); opacity: 0.6; }
+  100% { transform: translateY(200%); opacity: 0; }
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.4s ease-out forwards;
+}
+
+.animate-scanline {
+  animation: scanline 2.5s linear infinite;
+}
+
+.cursor-blink {
+  animation: blink 1s step-end infinite;
+}
+
+.shimmer {
+  background: linear-gradient(90deg, #1C2333 25%, #243046 50%, #1C2333 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.8s infinite;
+}
+
+/* Scrollbar personalizado */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: #080B10; }
+::-webkit-scrollbar-thumb { background: #1C2333; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #00E5FF33; }
