@@ -66,6 +66,13 @@ function corsHeaders(origin) {
   }
 }
 
+function applyHeaders(res, headers) {
+  Object.entries(headers).forEach(([key, value]) => {
+    res.setHeader(key, value)
+  })
+  return res
+}
+
 function normalizeText(value, fallback = '') {
   if (typeof value !== 'string') return fallback
   return value.trim()
@@ -444,16 +451,24 @@ async function handleRequest(req, res) {
   const origin = req.headers.origin || ''
   const headers = corsHeaders(origin)
 
-  if (req.method === 'OPTIONS') return res.status(204).set(headers).end()
-  if (req.method !== 'POST') return res.status(405).set(headers).json({ error: 'Method not allowed' })
+  if (req.method === 'OPTIONS') {
+    applyHeaders(res, headers)
+    return res.status(204).end()
+  }
+
+  applyHeaders(res, headers)
+
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' })
+  }
 
   const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || 'unknown'
   const { allowed, remaining } = getRateLimit(ip)
 
   if (!allowed) {
+    applyHeaders(res, { 'Retry-After': '60' })
     return res
       .status(429)
-      .set({ ...headers, 'Retry-After': '60' })
       .json({ error: 'Demasiadas solicitudes. Intenta en 60 segundos.' })
   }
 
@@ -463,7 +478,7 @@ async function handleRequest(req, res) {
   try {
     body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body
   } catch {
-    return res.status(400).set(headers).json({ error: 'Body inválido' })
+    return res.status(400).json({ error: 'Body inválido' })
   }
 
   const company = sanitizeInput(body?.company)
@@ -472,7 +487,7 @@ async function handleRequest(req, res) {
   const requestType = normalizeText(body?.requestType, 'single_audit')
 
   if (!company) {
-    return res.status(400).set(headers).json({ error: 'Nombre de empresa inválido.' })
+    return res.status(400).json({ error: 'Nombre de empresa inválido.' })
   }
 
   const supabase = getSupabaseClient()
@@ -484,7 +499,7 @@ async function handleRequest(req, res) {
     profile.queries_used >= profile.queries_limit &&
     requestType !== 'onboarding_audit'
   ) {
-    return res.status(403).set(headers).json({
+    return res.status(403).json({
       error: 'Alcanzaste el límite de análisis de tu plan actual. Haz upgrade para continuar.'
     })
   }
@@ -532,7 +547,7 @@ async function handleRequest(req, res) {
       updated_at: new Date().toISOString()
     })
 
-    return res.status(200).set(headers).json({ ...cached, audit_id: auditId, from_cache: true })
+    return res.status(200).json({ ...cached, audit_id: auditId, from_cache: true })
   }
 
   const apiKey = process.env.ANTHROPIC_API_KEY
@@ -550,7 +565,7 @@ async function handleRequest(req, res) {
     })
 
     console.error('[BALANCE360] ANTHROPIC_API_KEY no configurada, devolviendo fallback')
-    return res.status(200).set(headers).json({
+    return res.status(200).json({
       ...fallback,
       audit_id: savedFallback?.id || null,
       from_cache: false,
@@ -570,7 +585,7 @@ async function handleRequest(req, res) {
       updated_at: new Date().toISOString()
     })
 
-    return res.status(200).set(headers).json({
+    return res.status(200).json({
       ...normalized,
       audit_id: savedAudit?.id || null,
       from_cache: false
@@ -589,7 +604,7 @@ async function handleRequest(req, res) {
     })
 
     console.error('[BALANCE360] Error en análisis enriquecido, devolviendo fallback:', error.message)
-    return res.status(200).set(headers).json({
+    return res.status(200).json({
       ...fallback,
       audit_id: savedFallback?.id || null,
       from_cache: false,
