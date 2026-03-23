@@ -254,14 +254,25 @@ function buildSystemPrompt(signals) {
 }
 
 function buildFallbackAudit(company, signals, details = '') {
-  const note = details ? ` Contexto técnico: ${details}` : ''
+  const note = details ? ' El análisis enriquecido no estuvo disponible temporalmente.' : ''
   const existenceHint = signals?.existenceLikely
     ? `${company} muestra algunas señales públicas, pero el análisis enriquecido no pudo completarse.`
     : `No encontramos señales públicas suficientes para confirmar una presencia digital consistente de ${company}.`
   const hallazgoBase = `${existenceHint}${note}`.trim()
-  const baseScore = signals?.confidenceScore
-    ? Math.max(18, Math.min(68, Math.round(signals.confidenceScore * 0.7)))
-    : 32
+  const detectedSignalsCount = [
+    Boolean(signals?.web?.found),
+    Boolean(signals?.google_business?.found),
+    Boolean(signals?.app?.app_store || signals?.app?.play_store || signals?.app?.found),
+    Boolean((signals?.organic_mentions?.mentionsCount || 0) > 0),
+    Boolean((signals?.rrss?.count || 0) > 0)
+  ].filter(Boolean).length
+
+  let baseScore = signals?.confidenceScore
+    ? Math.max(28, Math.min(82, Math.round(signals.confidenceScore * 0.95)))
+    : 36
+
+  if (detectedSignalsCount >= 3) baseScore = Math.max(baseScore, 50)
+  else if (detectedSignalsCount >= 2) baseScore = Math.max(baseScore, 42)
 
   return {
     company,
@@ -284,7 +295,7 @@ function buildFallbackAudit(company, signals, details = '') {
         score: signals?.app?.found ? 54 : 18,
         hallazgos: [signals?.app?.found
           ? `Encontramos una señal en App Store para ${company}. ${hallazgoBase}`
-          : `No encontramos evidencia suficiente de app pública para ${company}. ${note}`.trim()],
+          : `No encontramos evidencia suficiente de app pública para ${company}.${note}`.trim()],
         oportunidades: ['Validar presencia real en App Store y Google Play, rating, volumen de reseñas y desempeño funcional.']
       },
       web: {
