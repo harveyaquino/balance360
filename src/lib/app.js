@@ -1,6 +1,6 @@
 import { supabase } from './supabase'
 
-export async function getAppContext(userId) {
+async function loadBaseContext(userId) {
   const [profileRes, onboardingRes] = await Promise.all([
     supabase
       .from('profiles')
@@ -14,9 +14,45 @@ export async function getAppContext(userId) {
       .maybeSingle()
   ])
 
-  const profile = profileRes.data || null
-  const onboarding = onboardingRes.data || null
-  const workspaceId = profile?.workspace_id || onboarding?.workspace_id || null
+  return {
+    profile: profileRes.data || null,
+    onboarding: onboardingRes.data || null
+  }
+}
+
+async function ensureWorkspaceBootstrap(accessToken) {
+  if (!accessToken) return null
+
+  try {
+    const response = await fetch('/api/bootstrap-workspace', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`
+      },
+      body: JSON.stringify({})
+    })
+
+    if (!response.ok) return null
+    return response.json()
+  } catch {
+    return null
+  }
+}
+
+export async function getAppContext(userId, accessToken) {
+  let { profile, onboarding } = await loadBaseContext(userId)
+  let workspaceId = profile?.workspace_id || onboarding?.workspace_id || null
+
+  if (!workspaceId && accessToken) {
+    const bootstrap = await ensureWorkspaceBootstrap(accessToken)
+    if (bootstrap?.workspace_id) {
+      const refreshed = await loadBaseContext(userId)
+      profile = refreshed.profile
+      onboarding = refreshed.onboarding
+      workspaceId = profile?.workspace_id || onboarding?.workspace_id || bootstrap.workspace_id
+    }
+  }
 
   let workspace = null
   let companies = []

@@ -522,10 +522,10 @@ export default function App() {
 
   const resultData = useMemo(() => normalizeResult(balance.data), [balance.data])
 
-  const loadContext = useCallback(async (userId) => {
+  const loadContext = useCallback(async (userId, accessToken) => {
     setContextLoading(true)
     try {
-      const context = await getAppContext(userId)
+      const context = await getAppContext(userId, accessToken)
       setProfile(context.profile)
       setWorkspace(context.workspace)
       setCompanies(context.companies)
@@ -539,6 +539,8 @@ export default function App() {
         primaryCompetitor: context.onboarding?.primary_competitor || previous.primaryCompetitor,
         jobTitle: context.profile?.job_title || previous.jobTitle
       }))
+
+      return context
     } finally {
       setContextLoading(false)
     }
@@ -552,7 +554,7 @@ export default function App() {
       const currentSession = data.session || null
       setSession(currentSession)
       if (currentSession?.user) {
-        await loadContext(currentSession.user.id)
+        await loadContext(currentSession.user.id, currentSession.access_token)
       }
       if (active) setBooting(false)
     })
@@ -571,7 +573,7 @@ export default function App() {
         return
       }
 
-      loadContext(nextSession.user.id).finally(() => setBooting(false))
+      loadContext(nextSession.user.id, nextSession.access_token).finally(() => setBooting(false))
     })
 
     return () => {
@@ -649,7 +651,7 @@ export default function App() {
       requestType: 'single_audit'
     })
 
-    if (session?.user?.id) await loadContext(session.user.id)
+    if (session?.user?.id) await loadContext(session.user.id, session.access_token)
   }
 
   const handleOnboardingChange = (field, value) => {
@@ -659,8 +661,19 @@ export default function App() {
   const handleOnboardingSubmit = async (event) => {
     event.preventDefault()
 
-    if (!session?.user || !workspace?.id) {
-      setOnboardingError('No encontramos un workspace activo para este usuario.')
+    if (!session?.user) {
+      setOnboardingError('No encontramos sesión activa para este usuario.')
+      return
+    }
+
+    let activeWorkspaceId = workspace?.id || null
+    if (!activeWorkspaceId) {
+      const context = await loadContext(session.user.id, session.access_token)
+      activeWorkspaceId = context?.workspace?.id || null
+    }
+
+    if (!activeWorkspaceId) {
+      setOnboardingError('No encontramos un workspace activo para este usuario. Reintenta en 5 segundos.')
       return
     }
 
@@ -675,7 +688,7 @@ export default function App() {
     try {
       const company = await completeOnboarding({
         userId: session.user.id,
-        workspaceId: workspace.id,
+        workspaceId: activeWorkspaceId,
         companyName: onboardingForm.companyName,
         sector: onboardingForm.sector,
         primaryCompetitor: onboardingForm.primaryCompetitor,
@@ -684,7 +697,7 @@ export default function App() {
 
       const result = await balance.analyze(onboardingForm.companyName, {
         accessToken: session.access_token,
-        workspaceId: workspace.id,
+        workspaceId: activeWorkspaceId,
         companyId: company.id,
         requestType: 'onboarding_audit'
       })
@@ -695,12 +708,12 @@ export default function App() {
 
       await finalizeOnboarding({
         userId: session.user.id,
-        workspaceId: workspace.id,
+        workspaceId: activeWorkspaceId,
         companyId: company.id,
         auditId: result.audit_id
       })
 
-      await loadContext(session.user.id)
+      await loadContext(session.user.id, session.access_token)
       setSelectedCompanyId(company.id)
     } catch (error) {
       setOnboardingError(error.message || 'No fue posible completar el onboarding.')
