@@ -175,9 +175,73 @@ function ResultBanner({ degraded }) {
         Lectura preliminar
       </p>
       <p className="text-balance360-text text-sm leading-6">
-        Este resultado es una aproximación ejecutiva mientras conectamos fuentes verificadas por frente.
-        La experiencia ya está limpia para demo, pero los datos todavía no provienen de APIs reales.
+        Este resultado es una aproximación ejecutiva basada en señales públicas abiertas.
+        Estamos conectando fuentes verificadas adicionales por frente para consolidar precisión de nivel enterprise.
       </p>
+    </div>
+  )
+}
+
+function extractHostname(url) {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '')
+  } catch {
+    return 'fuente'
+  }
+}
+
+function EvidencePanel({ data }) {
+  const evidence = data?.signals_evidence
+  if (!evidence) return null
+
+  const rows = [
+    evidence.website
+      ? { label: 'Sitio web', value: extractHostname(evidence.website), href: evidence.website }
+      : null,
+    evidence.appStore
+      ? { label: 'App Store', value: extractHostname(evidence.appStore), href: evidence.appStore }
+      : null,
+    evidence.maps
+      ? { label: 'Google Maps', value: extractHostname(evidence.maps), href: evidence.maps }
+      : null
+  ].filter(Boolean)
+
+  const socialCount = Array.isArray(evidence.socialProfiles) ? evidence.socialProfiles.length : 0
+  const organicCount = Array.isArray(evidence.organicTopLinks) ? evidence.organicTopLinks.length : 0
+
+  return (
+    <div className="balance360-card p-5 mb-6">
+      <div className="flex items-center justify-between gap-4 mb-4 flex-wrap">
+        <p className="text-balance360-text text-sm font-semibold">Fuentes detectadas</p>
+        <span className="balance360-tag text-balance360-accent">
+          confianza señales {Number(data.signal_confidence || 0)}/100
+        </span>
+      </div>
+
+      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        {rows.map((row) => (
+          <a
+            key={`${row.label}-${row.href}`}
+            href={row.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="balance360-surface-card hover:border-balance360-accent/40 transition-colors"
+          >
+            <p className="text-balance360-muted text-[11px] uppercase tracking-wider mb-1">{row.label}</p>
+            <p className="text-balance360-text text-sm break-all">{row.value}</p>
+          </a>
+        ))}
+
+        <div className="balance360-surface-card">
+          <p className="text-balance360-muted text-[11px] uppercase tracking-wider mb-1">Redes sociales</p>
+          <p className="text-balance360-text text-sm">{socialCount} perfiles relevantes</p>
+        </div>
+
+        <div className="balance360-surface-card">
+          <p className="text-balance360-muted text-[11px] uppercase tracking-wider mb-1">Menciones orgánicas</p>
+          <p className="text-balance360-text text-sm">{organicCount} resultados filtrados</p>
+        </div>
+      </div>
     </div>
   )
 }
@@ -226,6 +290,7 @@ function Results({ data, fromCache, onReset }) {
     <div className="max-w-5xl mx-auto px-4 pb-16 animate-fade-in-up">
       <ResultBanner degraded={data.degraded} />
       <ResultSummary data={data} fromCache={fromCache} />
+      <EvidencePanel data={data} />
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 mb-8">
         {FRENTES_ORDER.map((key) =>

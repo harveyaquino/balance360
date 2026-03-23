@@ -600,7 +600,14 @@ async function handleRequest(req, res) {
       updated_at: new Date().toISOString()
     })
 
-    return res.status(200).json({ ...cached, audit_id: auditId, from_cache: true })
+    return res.status(200).json({
+      ...cached,
+      audit_id: auditId,
+      from_cache: true,
+      signal_confidence: publicSignals.confidenceScore,
+      signals_evidence: publicSignals.evidence,
+      data_quality: publicSignals.existenceLikely ? 'verified_signals' : 'weak_signals'
+    })
   }
 
   const apiKey = process.env.ANTHROPIC_API_KEY
@@ -622,7 +629,10 @@ async function handleRequest(req, res) {
       ...fallback,
       audit_id: savedFallback?.id || null,
       from_cache: false,
-      degraded: true
+      degraded: true,
+      signal_confidence: publicSignals.confidenceScore,
+      signals_evidence: publicSignals.evidence,
+      data_quality: publicSignals.existenceLikely ? 'verified_signals' : 'weak_signals'
     })
   }
 
@@ -644,7 +654,10 @@ async function handleRequest(req, res) {
         ...fallback,
         audit_id: savedFallback?.id || null,
         from_cache: false,
-        degraded: true
+        degraded: true,
+        signal_confidence: publicSignals.confidenceScore,
+        signals_evidence: publicSignals.evidence,
+        data_quality: publicSignals.existenceLikely ? 'verified_signals' : 'weak_signals'
       })
     }
 
@@ -662,7 +675,10 @@ async function handleRequest(req, res) {
     return res.status(200).json({
       ...normalized,
       audit_id: savedAudit?.id || null,
-      from_cache: false
+      from_cache: false,
+      signal_confidence: publicSignals.confidenceScore,
+      signals_evidence: publicSignals.evidence,
+      data_quality: publicSignals.existenceLikely ? 'verified_signals' : 'weak_signals'
     })
   } catch (error) {
     const fallback = buildFallbackAudit(company, publicSignals, error.message)
@@ -682,7 +698,10 @@ async function handleRequest(req, res) {
       ...fallback,
       audit_id: savedFallback?.id || null,
       from_cache: false,
-      degraded: true
+      degraded: true,
+      signal_confidence: publicSignals.confidenceScore,
+      signals_evidence: publicSignals.evidence,
+      data_quality: publicSignals.existenceLikely ? 'verified_signals' : 'weak_signals'
     })
   }
 }

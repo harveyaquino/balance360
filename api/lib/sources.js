@@ -12,6 +12,10 @@ function tokenize(value) {
   return normalizeName(value).split(' ').filter((token) => token.length >= 3)
 }
 
+function tokenizeStrict(value) {
+  return normalizeName(value).split(' ').filter((token) => token.length >= 4)
+}
+
 function overlapScore(left, right) {
   const leftTokens = tokenize(left)
   const rightTokens = tokenize(right)
@@ -20,6 +24,42 @@ function overlapScore(left, right) {
   const rightSet = new Set(rightTokens)
   const matches = leftTokens.filter((token) => rightSet.has(token)).length
   return matches / Math.max(leftTokens.length, rightTokens.length)
+}
+
+function decodeDuckDuckGoHref(rawHref) {
+  const href = String(rawHref || '').trim()
+  if (!href) return ''
+  if (!href.includes('duckduckgo.com/l/?')) return href
+
+  try {
+    const parsed = new URL(href.startsWith('http') ? href : `https:${href}`)
+    const target = parsed.searchParams.get('uddg')
+    return target ? decodeURIComponent(target) : href
+  } catch {
+    return href
+  }
+}
+
+function isCompanyMentionLikely(company, text) {
+  const companyNorm = normalizeName(company)
+  const textNorm = normalizeName(text)
+  if (!companyNorm || !textNorm) return false
+  if (textNorm.includes(companyNorm)) return true
+
+  const companyTokens = tokenizeStrict(company)
+  if (!companyTokens.length) return false
+
+  const textTokens = new Set(tokenizeStrict(text))
+  const tokenMatches = companyTokens.filter((token) => textTokens.has(token)).length
+
+  if (companyTokens.length === 1) return tokenMatches === 1
+  return tokenMatches >= Math.min(2, companyTokens.length)
+}
+
+function companyRelevanceScore(company, candidate) {
+  const text = normalizeWhitespace(candidate)
+  const overlap = overlapScore(company, text)
+  return isCompanyMentionLikely(company, text) ? Math.max(0.55, overlap) : overlap
 }
 
 function stripHtml(value) {
@@ -65,7 +105,7 @@ function extractLinksFromDuckDuckGo(html) {
   let match
 
   while ((match = pattern.exec(html)) && links.length < 8) {
-    const href = match[1]
+    const href = decodeDuckDuckGoHref(match[1])
     const title = stripHtml(match[2])
     if (!href || !title) continue
     links.push({ href, title })
@@ -103,22 +143,24 @@ async function searchDuckDuckGo(query) {
 }
 
 function scoreFromSignals({ hasWebsite, organicCount, hasApp, socialCount, hasMaps }) {
-  let score = 20
-  if (hasWebsite) score += 18
-  if (organicCount >= 3) score += 18
-  else if (organicCount >= 1) score += 10
-  if (hasApp) score += 16
-  if (socialCount >= 2) score += 14
+  let score = 8
+  if (hasWebsite) score += 30
+  if (organicCount >= 4) score += 22
+  else if (organicCount >= 2) score += 14
+  else if (organicCount >= 1) score += 7
+  if (hasApp) score += 20
+  if (socialCount >= 2) score += 15
   else if (socialCount >= 1) score += 8
-  if (hasMaps) score += 14
-  return Math.max(12, Math.min(92, score))
+  if (hasMaps) score += 13
+  return Math.max(8, Math.min(95, score))
 }
 
 function pickOfficialWebsite(company, search) {
   const slug = company.toLowerCase().replace(/[^a-z0-9]+/g, '')
   return search.links.find((item) => {
     const href = item.href.toLowerCase()
-    return !href.includes('duckduckgo.com') && (href.includes(slug) || item.title.toLowerCase().includes(company.toLowerCase()))
+    const hasBrandSignal = companyRelevanceScore(company, `${item.title} ${item.href}`) >= 0.45
+    return !href.includes('duckduckgo.com') && hasBrandSignal && (href.includes(slug) || item.title.toLowerCase().includes(company.toLowerCase()))
   }) || null
 }
 
@@ -167,17 +209,31 @@ async function getWebsiteEvidence(company) {
 
 async function getOrganicEvidence(company) {
   const search = await searchDuckDuckGo(company)
+  const links = search.links
+    .map((item) => ({
+      ...item,
+      relevance: companyRelevanceScore(company, `${item.title} ${item.href}`)
+    }))
+    .filter((item) => item.relevance >= 0.42)
+
+  const snippets = search.snippets
+    .map((item) => ({ text: item, relevance: companyRelevanceScore(company, item) }))
+    .filter((item) => item.relevance >= 0.38)
+    .map((item) => item.text)
+
   return {
-    found: search.links.length > 0,
-    mentionsCount: search.links.length,
-    topLinks: search.links.slice(0, 5),
-    snippets: search.snippets.slice(0, 4)
+    found: links.length > 0 || snippets.length > 0,
+    mentionsCount: links.length,
+    topLinks: links.slice(0, 5),
+    snippets: snippets.slice(0, 4)
   }
 }
 
 async function getSocialEvidence(company) {
   const search = await searchDuckDuckGo(`${company} linkedin instagram facebook x`)
-  const links = pickSocialLinks(search)
+  const links = pickSocialLinks(search).filter((item) =>
+    companyRelevanceScore(company, `${item.title} ${item.href}`) >= 0.4
+  )
   return {
     found: links.length > 0,
     profiles: links,
@@ -188,8 +244,9 @@ async function getSocialEvidence(company) {
 async function getMapsEvidence(company) {
   const search = await searchDuckDuckGo(`${company} google maps`)
   const link = pickMapsLink(search)
+  const relevance = companyRelevanceScore(company, `${link?.title || ''} ${link?.href || ''} ${search.snippets[0] || ''}`)
   return {
-    found: Boolean(link),
+    found: Boolean(link) && relevance >= 0.35,
     link: link?.href || null,
     title: link?.title || '',
     snippet: search.snippets[0] || ''
@@ -259,7 +316,7 @@ export async function collectPublicSignals(company) {
   return {
     company,
     confidenceScore,
-    existenceLikely: confidenceScore >= 35,
+    existenceLikely: confidenceScore >= 45,
     web: website,
     organic_mentions: organic,
     rrss: social,
@@ -274,6 +331,13 @@ export async function collectPublicSignals(company) {
         } : null,
         maps: maps.found ? { title: maps.title, snippet: maps.snippet } : null
       }
+    },
+    evidence: {
+      website: website.url || null,
+      appStore: appStore.app?.url || null,
+      maps: maps.link || null,
+      socialProfiles: social.profiles || [],
+      organicTopLinks: organic.topLinks || []
     }
   }
 }
