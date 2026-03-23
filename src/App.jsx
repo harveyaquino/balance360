@@ -503,6 +503,9 @@ function normalizeOnboardingError(error) {
   if (message.includes('stack depth limit exceeded')) {
     return 'Detectamos una configuración pendiente en base de datos (RLS). Ejecuta la migración de fix y vuelve a intentar.'
   }
+  if (message.includes('row-level security') || message.includes('onboarding_states')) {
+    return 'Tu base de datos bloqueó el insert de onboarding por política RLS. Ejecuta la migración de onboarding y vuelve a intentar.'
+  }
   return error?.message || 'No fue posible completar el onboarding.'
 }
 
