@@ -136,6 +136,78 @@ function normalizeAuditResult(raw, company) {
   }
 }
 
+function pushUnique(list, value) {
+  const text = normalizeText(value)
+  if (!text) return list
+  if (list.some((item) => normalizeText(item).toLowerCase() === text.toLowerCase())) return list
+  return [...list, text]
+}
+
+function reconcileAuditWithSignals(audit, signals) {
+  if (!audit || !signals) return audit
+
+  const merged = {
+    ...audit,
+    frentes: {
+      app: { ...(audit.frentes?.app || {}) },
+      web: { ...(audit.frentes?.web || {}) },
+      rrss: { ...(audit.frentes?.rrss || {}) },
+      reviews: { ...(audit.frentes?.reviews || {}) },
+      google_business: { ...(audit.frentes?.google_business || {}) },
+      organic_mentions: { ...(audit.frentes?.organic_mentions || {}) }
+    }
+  }
+
+  if (signals.web?.found) {
+    merged.frentes.web.score = Math.max(merged.frentes.web.score || 0, 55)
+    merged.frentes.web.hallazgos = pushUnique(
+      Array.isArray(merged.frentes.web.hallazgos) ? merged.frentes.web.hallazgos : [],
+      `Detectamos sitio o dominio asociado: ${signals.web.url || 'sin URL visible'}.`
+    )
+  }
+
+  if (signals.google_business?.found && signals.google_business?.place) {
+    merged.frentes.google_business.score = Math.max(merged.frentes.google_business.score || 0, 55)
+    merged.frentes.google_business.hallazgos = pushUnique(
+      Array.isArray(merged.frentes.google_business.hallazgos) ? merged.frentes.google_business.hallazgos : [],
+      `Se detectó ficha de Maps: ${signals.google_business.place.name || 'Google Maps'}${signals.google_business.place.rating ? ` (rating ${signals.google_business.place.rating})` : ''}.`
+    )
+  }
+
+  if (signals.app?.app_store || signals.app?.play_store) {
+    merged.frentes.app.score = Math.max(merged.frentes.app.score || 0, 55)
+    const appHint = signals.app?.play_store?.name || signals.app?.app_store?.name || 'app pública detectada'
+    merged.frentes.app.hallazgos = pushUnique(
+      Array.isArray(merged.frentes.app.hallazgos) ? merged.frentes.app.hallazgos : [],
+      `Detectamos señal de app: ${appHint}.`
+    )
+  }
+
+  if (signals.reviews?.found) {
+    merged.frentes.reviews.score = Math.max(merged.frentes.reviews.score || 0, 48)
+  }
+
+  if ((signals.organic_mentions?.mentionsCount || 0) > 0) {
+    merged.frentes.organic_mentions.score = Math.max(merged.frentes.organic_mentions.score || 0, 28)
+  }
+
+  const detectedCount = [
+    Boolean(signals.web?.found),
+    Boolean(signals.google_business?.found),
+    Boolean(signals.app?.app_store || signals.app?.play_store),
+    Boolean((signals.organic_mentions?.mentionsCount || 0) > 0),
+    Boolean((signals.rrss?.count || 0) > 0)
+  ].filter(Boolean).length
+
+  if (detectedCount >= 3) {
+    merged.score = Math.max(merged.score || 0, 45)
+  } else if (detectedCount >= 2) {
+    merged.score = Math.max(merged.score || 0, 36)
+  }
+
+  return merged
+}
+
 function extractTextBlocks(apiData) {
   return (apiData.content || [])
     .filter((block) => block.type === 'text')
@@ -576,17 +648,19 @@ async function handleRequest(req, res) {
 
   const cached = await getCachedAudit(supabase, company)
   if (cached && !isLowQualityCachedAudit(cached)) {
+    const cachedNormalized = normalizeAuditResult(cached, company)
+    const cachedReconciled = reconcileAuditWithSignals(cachedNormalized, publicSignals)
     let auditId = cached.id
 
     if (authUser?.id) {
       const savedFromCache = await saveAudit(supabase, {
-        company: cached.company,
-        sector: cached.sector,
-        score: cached.score,
-        frentes: cached.frentes || {},
-        voz_usuario: cached.voz_usuario,
-        gap_principal: cached.gap_principal,
-        pasos: Array.isArray(cached.pasos) ? cached.pasos : []
+        company: cachedReconciled.company,
+        sector: cachedReconciled.sector,
+        score: cachedReconciled.score,
+        frentes: cachedReconciled.frentes || {},
+        voz_usuario: cachedReconciled.voz_usuario,
+        gap_principal: cachedReconciled.gap_principal,
+        pasos: Array.isArray(cachedReconciled.pasos) ? cachedReconciled.pasos : []
       }, authUser.id)
 
       if (savedFromCache?.id) auditId = savedFromCache.id
@@ -595,13 +669,14 @@ async function handleRequest(req, res) {
     await updateAnalysisRequest(supabase, analysisRequest?.id, {
       status: 'completed',
       result_audit_id: auditId,
-      sector: cached.sector || null,
+      sector: cachedReconciled.sector || null,
       completed_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
     })
 
     return res.status(200).json({
       ...cached,
+      ...cachedReconciled,
       audit_id: auditId,
       from_cache: true,
       signal_confidence: publicSignals.confidenceScore,
@@ -662,18 +737,19 @@ async function handleRequest(req, res) {
     }
 
     const normalized = await requestAnthropicAnalysis(apiKey, company, publicSignals)
-    const savedAudit = await saveAudit(supabase, normalized, authUser?.id || null)
+    const reconciled = reconcileAuditWithSignals(normalized, publicSignals)
+    const savedAudit = await saveAudit(supabase, reconciled, authUser?.id || null)
 
     await updateAnalysisRequest(supabase, analysisRequest?.id, {
       status: 'completed',
       result_audit_id: savedAudit?.id || null,
-      sector: normalized.sector,
+      sector: reconciled.sector,
       completed_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
     })
 
     return res.status(200).json({
-      ...normalized,
+      ...reconciled,
       audit_id: savedAudit?.id || null,
       from_cache: false,
       signal_confidence: publicSignals.confidenceScore,
