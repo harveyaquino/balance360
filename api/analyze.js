@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { buildSignalsSummary, collectPublicSignals } from './lib/sources.js'
 
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || ''
 const MAX_INPUT_LENGTH = 120
@@ -148,11 +149,13 @@ function extractJson(text) {
   return JSON.parse(match[0])
 }
 
-function buildSystemPrompt() {
+function buildSystemPrompt(signals) {
   return [
     'Eres BALANCE360, un analista senior de inteligencia competitiva digital para grandes empresas de Latinoamérica.',
     'Debes responder solo con JSON válido, sin markdown, sin comentarios y sin texto adicional.',
     'Evalúa una empresa en seis frentes: app, web, rrss, reviews, google_business y organic_mentions.',
+    'Usa únicamente la evidencia entregada. No inventes presencia digital si las señales no aparecen.',
+    'Si la evidencia es débil o contradictoria, dilo explícitamente en hallazgos y baja el score.',
     'Cada frente debe incluir score (0 a 100), hallazgos (array) y oportunidades (array).',
     'La respuesta JSON debe usar exactamente esta estructura:',
     '{',
@@ -172,60 +175,86 @@ function buildSystemPrompt() {
     '  }',
     '}',
     'Si no tienes certeza, infiere con prudencia y deja constancia en hallazgos u oportunidades.',
-    'Mantén el lenguaje ejecutivo, concreto y útil para product managers, directores digitales y CMOs.'
+    'Mantén el lenguaje ejecutivo, concreto y útil para product managers, directores digitales y CMOs.',
+    'EVIDENCIA DISPONIBLE:',
+    buildSignalsSummary(signals)
   ].join('\n')
 }
 
-function buildFallbackAudit(company, details = '') {
+function buildFallbackAudit(company, signals, details = '') {
   const note = details ? ` Contexto técnico: ${details}` : ''
-  const hallazgoBase = `${company} tiene presencia digital detectable, pero el análisis automatizado completo no estuvo disponible.${note}`.trim()
+  const existenceHint = signals?.existenceLikely
+    ? `${company} muestra algunas señales públicas, pero el análisis enriquecido no pudo completarse.`
+    : `No encontramos señales públicas suficientes para confirmar una presencia digital consistente de ${company}.`
+  const hallazgoBase = `${existenceHint}${note}`.trim()
+  const baseScore = signals?.confidenceScore
+    ? Math.max(18, Math.min(68, Math.round(signals.confidenceScore * 0.7)))
+    : 32
 
   return {
     company,
     sector: 'General',
-    score: 58,
-    voz_usuario: `BALANCE360 generó un resultado de contingencia para ${company} mientras se estabiliza el análisis enriquecido.`,
-    gap_principal: `Hace falta consolidar señales comparables de ${company} frente a sus competidores para obtener un score más preciso.`,
+    score: baseScore,
+    voz_usuario: signals?.existenceLikely
+      ? `BALANCE360 detectó señales públicas iniciales de ${company}, pero aún faltan fuentes verificadas por frente para consolidar una lectura completa.`
+      : `BALANCE360 no encontró evidencia pública suficiente para validar digitalmente a ${company} con confianza.`,
+    gap_principal: signals?.existenceLikely
+      ? `Hace falta consolidar señales comparables de ${company} frente a sus competidores para obtener un score más preciso.`
+      : `Antes de emitir benchmark o insights, necesitamos confirmar si ${company} tiene presencia pública trazable en las fuentes monitoreadas.`,
     pasos: [
       `Inicializando auditoría de ${company}`,
-      'Intentando consulta del motor de análisis',
-      'Aplicando respuesta de contingencia para no interrumpir la experiencia'
+      'Recolectando señales públicas del producto',
+      'Aplicando respuesta preliminar basada en evidencia observable'
     ],
     frentes: {
       app: {
         label: 'App móvil',
-        score: 55,
-        hallazgos: [hallazgoBase],
-        oportunidades: ['Validar rating, volumen de reseñas y desempeño funcional en stores.']
+        score: signals?.app?.found ? 54 : 18,
+        hallazgos: [signals?.app?.found
+          ? `Encontramos una señal en App Store para ${company}. ${hallazgoBase}`
+          : `No encontramos evidencia suficiente de app pública para ${company}. ${note}`.trim()],
+        oportunidades: ['Validar presencia real en App Store y Google Play, rating, volumen de reseñas y desempeño funcional.']
       },
       web: {
         label: 'Web',
-        score: 62,
-        hallazgos: ['La experiencia web requiere una evaluación detallada de UX, velocidad y propuesta de valor.'],
-        oportunidades: ['Medir claridad de navegación, performance y conversión por flujo principal.']
+        score: signals?.web?.found ? 62 : 24,
+        hallazgos: [signals?.web?.found
+          ? `Detectamos sitio o dominio asociado a ${company}: ${signals.web.url || 'sin URL visible'}.`
+          : 'No encontramos una web oficial clara en esta primera pasada.'],
+        oportunidades: ['Validar dominio oficial, claridad de navegación, performance y conversión por flujo principal.']
       },
       rrss: {
         label: 'Redes sociales',
-        score: 57,
-        hallazgos: ['La presencia en redes existe, pero falta lectura consolidada de engagement y consistencia de marca.'],
+        score: signals?.rrss?.count ? Math.min(70, 28 + signals.rrss.count * 12) : 20,
+        hallazgos: [signals?.rrss?.count
+          ? `Detectamos ${signals.rrss.count} perfiles o señales sociales relacionadas con ${company}.`
+          : 'No encontramos perfiles sociales claros en esta pasada pública.'],
         oportunidades: ['Comparar frecuencia, tono y respuesta a usuarios frente a competidores directos.']
       },
       reviews: {
         label: 'Reviews',
-        score: 54,
-        hallazgos: ['Se requiere síntesis cualitativa de quejas y elogios para detectar patrones accionables.'],
-        oportunidades: ['Agrupar fricciones repetidas por producto, soporte, pagos y experiencia.']
+        score: signals?.reviews?.found ? 52 : 18,
+        hallazgos: [signals?.reviews?.found
+          ? 'Hay señales iniciales de reseñas públicas, pero aún falta consolidación cross-platform.'
+          : 'No encontramos suficientes reseñas públicas verificadas para sintetizar voz del usuario.'],
+        oportunidades: ['Agrupar fricciones repetidas por producto, soporte, pagos y experiencia cuando conectemos fuentes de reviews.']
       },
       google_business: {
         label: 'Google Business',
-        score: 60,
-        hallazgos: ['La huella local necesita revisión de reputación, reseñas recientes y señales de confianza.'],
-        oportunidades: ['Auditar respuesta a reseñas, consistencia de ficha y volumen comparativo.']
+        score: signals?.google_business?.found ? 58 : 20,
+        hallazgos: [signals?.google_business?.found
+          ? `Se detectó una posible ficha o resultado de Maps para ${company}.`
+          : 'No encontramos una ficha clara de Google Business en esta consulta pública.'],
+        oportunidades: ['Auditar reputación local, respuesta a reseñas y consistencia de ficha.']
       },
       organic_mentions: {
         label: 'Menciones orgánicas',
-        score: 59,
-        hallazgos: ['Hace falta consolidar visibilidad orgánica y narrativa de marca en resultados abiertos.'],
+        score: signals?.organic_mentions?.mentionsCount
+          ? Math.min(72, 24 + signals.organic_mentions.mentionsCount * 7)
+          : 16,
+        hallazgos: [signals?.organic_mentions?.mentionsCount
+          ? `Detectamos ${signals.organic_mentions.mentionsCount} resultados orgánicos visibles para ${company}.`
+          : `No encontramos suficientes menciones orgánicas confiables para ${company}.`],
         oportunidades: ['Monitorear share of voice, SEO de marca y menciones en medios y foros.']
       }
     }
@@ -415,7 +444,7 @@ async function saveAudit(supabase, result, userId) {
   return data
 }
 
-async function requestAnthropicAnalysis(apiKey, company) {
+async function requestAnthropicAnalysis(apiKey, company, signals) {
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -426,11 +455,11 @@ async function requestAnthropicAnalysis(apiKey, company) {
     body: JSON.stringify({
       model: ANTHROPIC_MODEL,
       max_tokens: 2500,
-      system: buildSystemPrompt(),
+      system: buildSystemPrompt(signals),
       messages: [
         {
           role: 'user',
-          content: `Genera un análisis ejecutivo de ${company} como producto digital para BALANCE360.`
+          content: `Genera un análisis ejecutivo de ${company} como producto digital para BALANCE360 usando solo la evidencia disponible.`
         }
       ]
     })
@@ -493,6 +522,7 @@ async function handleRequest(req, res) {
   const supabase = getSupabaseClient()
   const authUser = await getAuthenticatedUser(supabase, req.headers.authorization || '')
   const profile = authUser ? await getUserProfile(supabase, authUser.id) : null
+  const publicSignals = await collectPublicSignals(company)
 
   if (
     profile &&
@@ -552,7 +582,7 @@ async function handleRequest(req, res) {
 
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) {
-    const fallback = buildFallbackAudit(company, 'ANTHROPIC_API_KEY no configurada')
+    const fallback = buildFallbackAudit(company, publicSignals, 'ANTHROPIC_API_KEY no configurada')
     const savedFallback = await saveAudit(supabase, fallback, authUser?.id || null)
 
     await updateAnalysisRequest(supabase, analysisRequest?.id, {
@@ -574,7 +604,28 @@ async function handleRequest(req, res) {
   }
 
   try {
-    const normalized = await requestAnthropicAnalysis(apiKey, company)
+    if (!publicSignals.existenceLikely) {
+      const fallback = buildFallbackAudit(company, publicSignals, 'Sin evidencia pública suficiente')
+      const savedFallback = await saveAudit(supabase, fallback, authUser?.id || null)
+
+      await updateAnalysisRequest(supabase, analysisRequest?.id, {
+        status: 'completed',
+        result_audit_id: savedFallback?.id || null,
+        sector: fallback.sector,
+        error_message: 'Respuesta preliminar por falta de evidencia pública',
+        completed_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      })
+
+      return res.status(200).json({
+        ...fallback,
+        audit_id: savedFallback?.id || null,
+        from_cache: false,
+        degraded: true
+      })
+    }
+
+    const normalized = await requestAnthropicAnalysis(apiKey, company, publicSignals)
     const savedAudit = await saveAudit(supabase, normalized, authUser?.id || null)
 
     await updateAnalysisRequest(supabase, analysisRequest?.id, {
@@ -591,7 +642,7 @@ async function handleRequest(req, res) {
       from_cache: false
     })
   } catch (error) {
-    const fallback = buildFallbackAudit(company, error.message)
+    const fallback = buildFallbackAudit(company, publicSignals, error.message)
     const savedFallback = await saveAudit(supabase, fallback, authUser?.id || null)
 
     await updateAnalysisRequest(supabase, analysisRequest?.id, {

@@ -1,0 +1,276 @@
+const USER_AGENT = 'Mozilla/5.0 (compatible; BALANCE360/0.4; +https://balance360.app)'
+
+function normalizeWhitespace(value) {
+  return String(value || '').replace(/\s+/g, ' ').trim()
+}
+
+function stripHtml(value) {
+  return normalizeWhitespace(
+    String(value || '')
+      .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+      .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&amp;/g, '&')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+  )
+}
+
+async function fetchText(url) {
+  const response = await fetch(url, {
+    headers: { 'User-Agent': USER_AGENT, Accept: 'text/html,application/json;q=0.9,*/*;q=0.8' }
+  })
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status} en ${url}`)
+  }
+
+  return response.text()
+}
+
+async function fetchJson(url) {
+  const response = await fetch(url, {
+    headers: { 'User-Agent': USER_AGENT, Accept: 'application/json,text/plain;q=0.9,*/*;q=0.8' }
+  })
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status} en ${url}`)
+  }
+
+  return response.json()
+}
+
+function extractLinksFromDuckDuckGo(html) {
+  const links = []
+  const pattern = /<a[^>]+class="[^"]*result__a[^"]*"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi
+  let match
+
+  while ((match = pattern.exec(html)) && links.length < 8) {
+    const href = match[1]
+    const title = stripHtml(match[2])
+    if (!href || !title) continue
+    links.push({ href, title })
+  }
+
+  return links
+}
+
+function extractSnippetsFromDuckDuckGo(html) {
+  const snippets = []
+  const pattern = /<a[^>]+class="[^"]*result__snippet[^"]*"[^>]*>([\s\S]*?)<\/a>/gi
+  let match
+
+  while ((match = pattern.exec(html)) && snippets.length < 8) {
+    const text = stripHtml(match[1])
+    if (!text) continue
+    snippets.push(text)
+  }
+
+  return snippets
+}
+
+async function searchDuckDuckGo(query) {
+  try {
+    const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`
+    const html = await fetchText(url)
+    return {
+      query,
+      links: extractLinksFromDuckDuckGo(html),
+      snippets: extractSnippetsFromDuckDuckGo(html)
+    }
+  } catch (error) {
+    return { query, links: [], snippets: [], error: error.message }
+  }
+}
+
+function scoreFromSignals({ hasWebsite, organicCount, hasApp, socialCount, hasMaps }) {
+  let score = 20
+  if (hasWebsite) score += 18
+  if (organicCount >= 3) score += 18
+  else if (organicCount >= 1) score += 10
+  if (hasApp) score += 16
+  if (socialCount >= 2) score += 14
+  else if (socialCount >= 1) score += 8
+  if (hasMaps) score += 14
+  return Math.max(12, Math.min(92, score))
+}
+
+function pickOfficialWebsite(company, search) {
+  const slug = company.toLowerCase().replace(/[^a-z0-9]+/g, '')
+  return search.links.find((item) => {
+    const href = item.href.toLowerCase()
+    return !href.includes('duckduckgo.com') && (href.includes(slug) || item.title.toLowerCase().includes(company.toLowerCase()))
+  }) || null
+}
+
+function pickSocialLinks(search) {
+  const known = ['linkedin.com', 'instagram.com', 'facebook.com', 'x.com', 'twitter.com', 'youtube.com', 'tiktok.com']
+  return search.links.filter((item) => known.some((domain) => item.href.includes(domain))).slice(0, 5)
+}
+
+function pickMapsLink(search) {
+  return search.links.find((item) => /google\.[^/]+\/maps|maps\.apple\.com/i.test(item.href)) || null
+}
+
+async function getWebsiteEvidence(company) {
+  const directCandidates = [
+    `https://${company.toLowerCase().replace(/\s+/g, '')}.com`,
+    `https://www.${company.toLowerCase().replace(/\s+/g, '')}.com`
+  ]
+
+  for (const candidate of directCandidates) {
+    try {
+      const html = await fetchText(candidate)
+      const title = html.match(/<title>([\s\S]*?)<\/title>/i)?.[1] || ''
+      const description = html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i)?.[1] || ''
+      return {
+        found: true,
+        url: candidate,
+        title: stripHtml(title),
+        description: stripHtml(description),
+        source: 'direct'
+      }
+    } catch {
+      continue
+    }
+  }
+
+  const search = await searchDuckDuckGo(`${company} sitio oficial`)
+  const official = pickOfficialWebsite(company, search)
+  return {
+    found: Boolean(official),
+    url: official?.href || null,
+    title: official?.title || '',
+    description: search.snippets[0] || '',
+    source: official ? 'search' : 'none'
+  }
+}
+
+async function getOrganicEvidence(company) {
+  const search = await searchDuckDuckGo(company)
+  return {
+    found: search.links.length > 0,
+    mentionsCount: search.links.length,
+    topLinks: search.links.slice(0, 5),
+    snippets: search.snippets.slice(0, 4)
+  }
+}
+
+async function getSocialEvidence(company) {
+  const search = await searchDuckDuckGo(`${company} linkedin instagram facebook x`)
+  const links = pickSocialLinks(search)
+  return {
+    found: links.length > 0,
+    profiles: links,
+    count: links.length
+  }
+}
+
+async function getMapsEvidence(company) {
+  const search = await searchDuckDuckGo(`${company} google maps`)
+  const link = pickMapsLink(search)
+  return {
+    found: Boolean(link),
+    link: link?.href || null,
+    title: link?.title || '',
+    snippet: search.snippets[0] || ''
+  }
+}
+
+async function getAppStoreEvidence(company) {
+  try {
+    const url = `https://itunes.apple.com/search?term=${encodeURIComponent(company)}&entity=software&limit=5`
+    const data = await fetchJson(url)
+    const first = Array.isArray(data.results) ? data.results[0] : null
+    return {
+      found: Boolean(first),
+      resultsCount: Array.isArray(data.results) ? data.results.length : 0,
+      app: first ? {
+        name: first.trackName,
+        seller: first.sellerName,
+        averageRating: first.averageUserRating || null,
+        ratingCount: first.userRatingCount || 0,
+        url: first.trackViewUrl || null
+      } : null
+    }
+  } catch (error) {
+    return { found: false, resultsCount: 0, app: null, error: error.message }
+  }
+}
+
+export async function collectPublicSignals(company) {
+  const [website, organic, social, maps, appStore] = await Promise.all([
+    getWebsiteEvidence(company),
+    getOrganicEvidence(company),
+    getSocialEvidence(company),
+    getMapsEvidence(company),
+    getAppStoreEvidence(company)
+  ])
+
+  const confidenceScore = scoreFromSignals({
+    hasWebsite: website.found,
+    organicCount: organic.mentionsCount,
+    hasApp: appStore.found,
+    socialCount: social.count,
+    hasMaps: maps.found
+  })
+
+  return {
+    company,
+    confidenceScore,
+    existenceLikely: confidenceScore >= 35,
+    web: website,
+    organic_mentions: organic,
+    rrss: social,
+    google_business: maps,
+    app: appStore,
+    reviews: {
+      found: Boolean(appStore.app?.ratingCount || maps.found),
+      sources: {
+        app_store: appStore.app ? {
+          averageRating: appStore.app.averageRating,
+          ratingCount: appStore.app.ratingCount
+        } : null,
+        maps: maps.found ? { title: maps.title, snippet: maps.snippet } : null
+      }
+    }
+  }
+}
+
+export function buildSignalsSummary(signals) {
+  const lines = [
+    `Empresa evaluada: ${signals.company}`,
+    `Probabilidad de existencia pública detectable: ${signals.existenceLikely ? 'alta' : 'baja'} (${signals.confidenceScore}/100)`
+  ]
+
+  lines.push(
+    signals.web.found
+      ? `Web: encontrada (${signals.web.url || 'sin URL visible'})`
+      : 'Web: no encontrada'
+  )
+
+  lines.push(
+    signals.app.found
+      ? `App Store: encontrada (${signals.app.app?.name || 'sin nombre'})`
+      : 'App Store: no encontrada'
+  )
+
+  lines.push(
+    signals.google_business.found
+      ? `Google Business/Maps: señal detectada (${signals.google_business.title || 'listado visible'})`
+      : 'Google Business/Maps: no encontrado'
+  )
+
+  lines.push(`Redes sociales: ${signals.rrss.count || 0} perfiles detectados`)
+  lines.push(`Menciones orgánicas: ${signals.organic_mentions.mentionsCount || 0} resultados visibles`)
+
+  if (signals.organic_mentions.snippets?.length) {
+    lines.push('Snippets orgánicos relevantes:')
+    signals.organic_mentions.snippets.slice(0, 3).forEach((item, index) => {
+      lines.push(`${index + 1}. ${item}`)
+    })
+  }
+
+  return lines.join('\n')
+}
