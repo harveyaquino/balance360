@@ -1,4 +1,4 @@
-const USER_AGENT = 'Mozilla/5.0 (compatible; BALANCE360/0.4; +https://balance360.app)'
+const USER_AGENT = 'Mozilla/5.0 (compatible; BALANCE360/0.5; +https://balance360.app)'
 
 function normalizeWhitespace(value) {
   return String(value || '').replace(/\s+/g, ' ').trim()
@@ -12,10 +12,6 @@ function tokenize(value) {
   return normalizeName(value).split(' ').filter((token) => token.length >= 3)
 }
 
-function tokenizeStrict(value) {
-  return normalizeName(value).split(' ').filter((token) => token.length >= 4)
-}
-
 function overlapScore(left, right) {
   const leftTokens = tokenize(left)
   const rightTokens = tokenize(right)
@@ -24,42 +20,6 @@ function overlapScore(left, right) {
   const rightSet = new Set(rightTokens)
   const matches = leftTokens.filter((token) => rightSet.has(token)).length
   return matches / Math.max(leftTokens.length, rightTokens.length)
-}
-
-function decodeDuckDuckGoHref(rawHref) {
-  const href = String(rawHref || '').trim()
-  if (!href) return ''
-  if (!href.includes('duckduckgo.com/l/?')) return href
-
-  try {
-    const parsed = new URL(href.startsWith('http') ? href : `https:${href}`)
-    const target = parsed.searchParams.get('uddg')
-    return target ? decodeURIComponent(target) : href
-  } catch {
-    return href
-  }
-}
-
-function isCompanyMentionLikely(company, text) {
-  const companyNorm = normalizeName(company)
-  const textNorm = normalizeName(text)
-  if (!companyNorm || !textNorm) return false
-  if (textNorm.includes(companyNorm)) return true
-
-  const companyTokens = tokenizeStrict(company)
-  if (!companyTokens.length) return false
-
-  const textTokens = new Set(tokenizeStrict(text))
-  const tokenMatches = companyTokens.filter((token) => textTokens.has(token)).length
-
-  if (companyTokens.length === 1) return tokenMatches === 1
-  return tokenMatches >= Math.min(2, companyTokens.length)
-}
-
-function companyRelevanceScore(company, candidate) {
-  const text = normalizeWhitespace(candidate)
-  const overlap = overlapScore(company, text)
-  return isCompanyMentionLikely(company, text) ? Math.max(0.55, overlap) : overlap
 }
 
 function stripHtml(value) {
@@ -87,9 +47,14 @@ async function fetchText(url) {
   return response.text()
 }
 
-async function fetchJson(url) {
+async function fetchJson(url, options = {}) {
   const response = await fetch(url, {
-    headers: { 'User-Agent': USER_AGENT, Accept: 'application/json,text/plain;q=0.9,*/*;q=0.8' }
+    ...options,
+    headers: {
+      'User-Agent': USER_AGENT,
+      Accept: 'application/json,text/plain;q=0.9,*/*;q=0.8',
+      ...(options.headers || {})
+    }
   })
 
   if (!response.ok) {
@@ -105,7 +70,7 @@ function extractLinksFromDuckDuckGo(html) {
   let match
 
   while ((match = pattern.exec(html)) && links.length < 8) {
-    const href = decodeDuckDuckGoHref(match[1])
+    const href = match[1]
     const title = stripHtml(match[2])
     if (!href || !title) continue
     links.push({ href, title })
@@ -142,35 +107,30 @@ async function searchDuckDuckGo(query) {
   }
 }
 
-function scoreFromSignals({ hasWebsite, organicCount, hasApp, socialCount, hasMaps }) {
-  let score = 8
-  if (hasWebsite) score += 30
-  if (organicCount >= 4) score += 22
-  else if (organicCount >= 2) score += 14
-  else if (organicCount >= 1) score += 7
-  if (hasApp) score += 20
-  if (socialCount >= 2) score += 15
-  else if (socialCount >= 1) score += 8
-  if (hasMaps) score += 13
-  return Math.max(8, Math.min(95, score))
+function scoreFromSignals({ hasWebsite, organicCount, hasAppStore, hasPlayStore, socialCount, hasMaps }) {
+  let score = 10
+  if (hasWebsite) score += 22
+  if (organicCount >= 3) score += 16
+  else if (organicCount >= 1) score += 9
+  if (hasAppStore) score += 13
+  if (hasPlayStore) score += 17
+  if (socialCount >= 2) score += 12
+  else if (socialCount >= 1) score += 6
+  if (hasMaps) score += 16
+  return Math.max(10, Math.min(95, score))
 }
 
 function pickOfficialWebsite(company, search) {
   const slug = company.toLowerCase().replace(/[^a-z0-9]+/g, '')
   return search.links.find((item) => {
     const href = item.href.toLowerCase()
-    const hasBrandSignal = companyRelevanceScore(company, `${item.title} ${item.href}`) >= 0.45
-    return !href.includes('duckduckgo.com') && hasBrandSignal && (href.includes(slug) || item.title.toLowerCase().includes(company.toLowerCase()))
+    return !href.includes('duckduckgo.com') && (href.includes(slug) || item.title.toLowerCase().includes(company.toLowerCase()))
   }) || null
 }
 
 function pickSocialLinks(search) {
   const known = ['linkedin.com', 'instagram.com', 'facebook.com', 'x.com', 'twitter.com', 'youtube.com', 'tiktok.com']
   return search.links.filter((item) => known.some((domain) => item.href.includes(domain))).slice(0, 5)
-}
-
-function pickMapsLink(search) {
-  return search.links.find((item) => /google\.[^/]+\/maps|maps\.apple\.com/i.test(item.href)) || null
 }
 
 async function getWebsiteEvidence(company) {
@@ -209,31 +169,17 @@ async function getWebsiteEvidence(company) {
 
 async function getOrganicEvidence(company) {
   const search = await searchDuckDuckGo(company)
-  const links = search.links
-    .map((item) => ({
-      ...item,
-      relevance: companyRelevanceScore(company, `${item.title} ${item.href}`)
-    }))
-    .filter((item) => item.relevance >= 0.42)
-
-  const snippets = search.snippets
-    .map((item) => ({ text: item, relevance: companyRelevanceScore(company, item) }))
-    .filter((item) => item.relevance >= 0.38)
-    .map((item) => item.text)
-
   return {
-    found: links.length > 0 || snippets.length > 0,
-    mentionsCount: links.length,
-    topLinks: links.slice(0, 5),
-    snippets: snippets.slice(0, 4)
+    found: search.links.length > 0,
+    mentionsCount: search.links.length,
+    topLinks: search.links.slice(0, 5),
+    snippets: search.snippets.slice(0, 4)
   }
 }
 
 async function getSocialEvidence(company) {
   const search = await searchDuckDuckGo(`${company} linkedin instagram facebook x`)
-  const links = pickSocialLinks(search).filter((item) =>
-    companyRelevanceScore(company, `${item.title} ${item.href}`) >= 0.4
-  )
+  const links = pickSocialLinks(search)
   return {
     found: links.length > 0,
     profiles: links,
@@ -241,15 +187,51 @@ async function getSocialEvidence(company) {
   }
 }
 
-async function getMapsEvidence(company) {
-  const search = await searchDuckDuckGo(`${company} google maps`)
-  const link = pickMapsLink(search)
-  const relevance = companyRelevanceScore(company, `${link?.title || ''} ${link?.href || ''} ${search.snippets[0] || ''}`)
-  return {
-    found: Boolean(link) && relevance >= 0.35,
-    link: link?.href || null,
-    title: link?.title || '',
-    snippet: search.snippets[0] || ''
+async function getGooglePlacesEvidence(company) {
+  const apiKey = process.env.GOOGLE_MAPS_API_KEY
+  if (!apiKey) {
+    return { found: false, source: 'google_places', error: 'GOOGLE_MAPS_API_KEY no configurada' }
+  }
+
+  try {
+    const body = { textQuery: company, languageCode: 'es' }
+    const data = await fetchJson('https://places.googleapis.com/v1/places:searchText', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': apiKey,
+        'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.rating,places.userRatingCount,places.googleMapsUri,places.websiteUri'
+      },
+      body: JSON.stringify(body)
+    })
+
+    const places = Array.isArray(data.places) ? data.places : []
+    const ranked = places
+      .map((place) => ({
+        place,
+        score: overlapScore(company, `${place.displayName?.text || ''} ${place.formattedAddress || ''}`)
+      }))
+      .sort((a, b) => b.score - a.score)
+
+    const first = ranked[0]?.place || null
+    const relevance = ranked[0]?.score || 0
+
+    return {
+      found: Boolean(first) && relevance >= 0.22,
+      source: 'google_places',
+      place: first ? {
+        id: first.id,
+        name: first.displayName?.text || '',
+        address: first.formattedAddress || '',
+        rating: first.rating || null,
+        ratingCount: first.userRatingCount || 0,
+        mapsUrl: first.googleMapsUri || null,
+        websiteUrl: first.websiteUri || null,
+        relevance
+      } : null
+    }
+  } catch (error) {
+    return { found: false, source: 'google_places', error: error.message }
   }
 }
 
@@ -258,37 +240,29 @@ async function getAppStoreEvidence(company) {
     const url = `https://itunes.apple.com/search?term=${encodeURIComponent(company)}&entity=software&limit=5`
     const data = await fetchJson(url)
     const results = Array.isArray(data.results) ? data.results : []
-    const companyTokens = tokenize(company)
     const ranked = results
       .map((item) => {
         const titleScore = overlapScore(company, item.trackName || '')
         const sellerScore = overlapScore(company, item.sellerName || '')
         const combinedScore = Math.max(titleScore, sellerScore)
-        return { item, combinedScore, titleScore, sellerScore }
-      })
-      .filter((entry) => {
-        const title = normalizeName(entry.item.trackName || '')
-        const seller = normalizeName(entry.item.sellerName || '')
-        const companyName = normalizeName(company)
-        const directTitleMatch = companyName && title.includes(companyName)
-        const directSellerMatch = companyName && seller.includes(companyName)
-        const tokenMatch = companyTokens.some((token) => title.includes(token) || seller.includes(token))
-        return directTitleMatch || directSellerMatch || (tokenMatch && entry.combinedScore >= 0.34)
+        return { item, combinedScore }
       })
       .sort((a, b) => b.combinedScore - a.combinedScore)
 
     const first = ranked[0]?.item || null
+    const relevanceScore = ranked[0]?.combinedScore || 0
 
     return {
-      found: Boolean(first),
+      found: Boolean(first) && relevanceScore >= 0.24,
       resultsCount: results.length,
       app: first ? {
+        productId: first.trackId,
         name: first.trackName,
         seller: first.sellerName,
         averageRating: first.averageUserRating || null,
         ratingCount: first.userRatingCount || 0,
         url: first.trackViewUrl || null,
-        relevanceScore: ranked[0]?.combinedScore || 0
+        relevanceScore
       } : null
     }
   } catch (error) {
@@ -296,19 +270,77 @@ async function getAppStoreEvidence(company) {
   }
 }
 
+async function getPlayStoreEvidence(company) {
+  const apiKey = process.env.SERPAPI_API_KEY
+  if (!apiKey) {
+    return { found: false, source: 'serpapi', error: 'SERPAPI_API_KEY no configurada', app: null }
+  }
+
+  try {
+    const searchUrl = `https://serpapi.com/search.json?engine=google_play&store=apps&q=${encodeURIComponent(company)}&api_key=${encodeURIComponent(apiKey)}`
+    const searchData = await fetchJson(searchUrl)
+    const appResults = Array.isArray(searchData.apps_results) ? searchData.apps_results : []
+
+    const ranked = appResults
+      .map((item) => {
+        const title = item.title || ''
+        const developer = item.developer || item.author || ''
+        const packageName = item.product_id || item.id || ''
+        const score = Math.max(
+          overlapScore(company, title),
+          overlapScore(company, developer),
+          overlapScore(company, packageName)
+        )
+        return { item, score }
+      })
+      .sort((a, b) => b.score - a.score)
+
+    const candidate = ranked[0]?.item || null
+    const relevance = ranked[0]?.score || 0
+    const productId = candidate?.product_id || candidate?.id || null
+
+    if (!productId || relevance < 0.2) {
+      return { found: false, source: 'serpapi', app: null, candidates: appResults.length }
+    }
+
+    const productUrl = `https://serpapi.com/search.json?engine=google_play_product&store=apps&product_id=${encodeURIComponent(productId)}&api_key=${encodeURIComponent(apiKey)}`
+    const productData = await fetchJson(productUrl)
+    const info = productData.product_info || {}
+
+    return {
+      found: true,
+      source: 'serpapi',
+      app: {
+        productId,
+        name: info.title || candidate.title || '',
+        developer: (Array.isArray(info.authors) && info.authors[0]?.name) || candidate.developer || '',
+        rating: info.rating || candidate.score || null,
+        reviews: info.reviews || candidate.reviews || 0,
+        downloads: info.downloads || null,
+        url: productData.search_metadata?.google_play_product_url || null,
+        relevance
+      }
+    }
+  } catch (error) {
+    return { found: false, source: 'serpapi', error: error.message, app: null }
+  }
+}
+
 export async function collectPublicSignals(company) {
-  const [website, organic, social, maps, appStore] = await Promise.all([
+  const [website, organic, social, maps, appStore, playStore] = await Promise.all([
     getWebsiteEvidence(company),
     getOrganicEvidence(company),
     getSocialEvidence(company),
-    getMapsEvidence(company),
-    getAppStoreEvidence(company)
+    getGooglePlacesEvidence(company),
+    getAppStoreEvidence(company),
+    getPlayStoreEvidence(company)
   ])
 
   const confidenceScore = scoreFromSignals({
     hasWebsite: website.found,
     organicCount: organic.mentionsCount,
-    hasApp: appStore.found,
+    hasAppStore: appStore.found,
+    hasPlayStore: playStore.found,
     socialCount: social.count,
     hasMaps: maps.found
   })
@@ -316,26 +348,43 @@ export async function collectPublicSignals(company) {
   return {
     company,
     confidenceScore,
-    existenceLikely: confidenceScore >= 45,
+    existenceLikely: confidenceScore >= 36,
     web: website,
     organic_mentions: organic,
     rrss: social,
-    google_business: maps,
-    app: appStore,
+    google_business: {
+      found: maps.found,
+      place: maps.place || null,
+      source: maps.source || 'google_places',
+      error: maps.error || null
+    },
+    app: {
+      found: appStore.found || playStore.found,
+      app_store: appStore.app || null,
+      play_store: playStore.app || null
+    },
     reviews: {
-      found: Boolean(appStore.app?.ratingCount || maps.found),
+      found: Boolean((appStore.app?.ratingCount || 0) > 0 || (playStore.app?.reviews || 0) > 0 || maps.place?.ratingCount > 0),
       sources: {
         app_store: appStore.app ? {
           averageRating: appStore.app.averageRating,
           ratingCount: appStore.app.ratingCount
         } : null,
-        maps: maps.found ? { title: maps.title, snippet: maps.snippet } : null
+        play_store: playStore.app ? {
+          averageRating: playStore.app.rating,
+          ratingCount: playStore.app.reviews
+        } : null,
+        maps: maps.place ? {
+          rating: maps.place.rating,
+          ratingCount: maps.place.ratingCount
+        } : null
       }
     },
     evidence: {
-      website: website.url || null,
+      website: website.url || maps.place?.websiteUrl || null,
       appStore: appStore.app?.url || null,
-      maps: maps.link || null,
+      playStore: playStore.app?.url || null,
+      maps: maps.place?.mapsUrl || null,
       socialProfiles: social.profiles || [],
       organicTopLinks: organic.topLinks || []
     }
@@ -355,15 +404,21 @@ export function buildSignalsSummary(signals) {
   )
 
   lines.push(
-    signals.app.found
-      ? `App Store: encontrada (${signals.app.app?.name || 'sin nombre'})`
-      : 'App Store: no encontrada'
+    signals.google_business?.found
+      ? `Google Business: señal real detectada (${signals.google_business.place?.name || 'ficha encontrada'})`
+      : 'Google Business: no encontrada'
   )
 
   lines.push(
-    signals.google_business.found
-      ? `Google Business/Maps: señal detectada (${signals.google_business.title || 'listado visible'})`
-      : 'Google Business/Maps: no encontrado'
+    signals.app?.app_store
+      ? `App Store iOS: encontrada (${signals.app.app_store.name || 'app sin nombre'})`
+      : 'App Store iOS: no encontrada'
+  )
+
+  lines.push(
+    signals.app?.play_store
+      ? `Google Play Android: encontrada (${signals.app.play_store.name || 'app sin nombre'})`
+      : 'Google Play Android: no encontrada'
   )
 
   lines.push(`Redes sociales: ${signals.rrss.count || 0} perfiles detectados`)
@@ -378,3 +433,4 @@ export function buildSignalsSummary(signals) {
 
   return lines.join('\n')
 }
+
