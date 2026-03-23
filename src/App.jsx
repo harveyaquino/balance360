@@ -498,6 +498,14 @@ function MessageCard({ children }) {
   )
 }
 
+function normalizeOnboardingError(error) {
+  const message = String(error?.message || error || '').toLowerCase()
+  if (message.includes('stack depth limit exceeded')) {
+    return 'Detectamos una configuración pendiente en base de datos (RLS). Ejecuta la migración de fix y vuelve a intentar.'
+  }
+  return error?.message || 'No fue posible completar el onboarding.'
+}
+
 export default function App() {
   const balance = useBalance360()
   const [booting, setBooting] = useState(true)
@@ -724,7 +732,7 @@ export default function App() {
       await loadContext(session.user.id, session.access_token)
       setSelectedCompanyId(company.id)
     } catch (error) {
-      setOnboardingError(error.message || 'No fue posible completar el onboarding.')
+      setOnboardingError(normalizeOnboardingError(error))
     } finally {
       setOnboardingLoading(false)
     }
