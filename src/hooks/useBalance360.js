@@ -1,25 +1,24 @@
-// src/hooks/useBalance360.js
-import { useState, useCallback } from 'react'
+import { useCallback, useState } from 'react'
 
-const MAX_LEN       = 120
-const INJECTION_RE  = /ignore\s+(previous|above|all)\s+instructions|system\s*prompt|<\s*script|javascript:/i
+const MAX_LEN = 120
+const INJECTION_RE = /ignore\s+(previous|above|all)\s+instructions|system\s*prompt|<\s*script|javascript:/i
 
 function sanitizeClient(input) {
   if (typeof input !== 'string') return null
-  const t = input.trim()
-  if (!t || t.length < 2 || t.length > MAX_LEN) return null
-  if (INJECTION_RE.test(t)) return null
-  return t.replace(/[<>"'`\\]/g, '').slice(0, MAX_LEN)
+  const value = input.trim()
+  if (!value || value.length < 2 || value.length > MAX_LEN) return null
+  if (INJECTION_RE.test(value)) return null
+  return value.replace(/[<>"'`\\]/g, '').slice(0, MAX_LEN)
 }
 
 export function useBalance360() {
-  const [status,    setStatus]    = useState('idle')
-  const [data,      setData]      = useState(null)
-  const [error,     setError]     = useState(null)
-  const [steps,     setSteps]     = useState([])
+  const [status, setStatus] = useState('idle')
+  const [data, setData] = useState(null)
+  const [error, setError] = useState(null)
+  const [steps, setSteps] = useState([])
   const [fromCache, setFromCache] = useState(false)
 
-  const analyze = useCallback(async (rawInput) => {
+  const analyze = useCallback(async (rawInput, options = {}) => {
     setStatus('loading')
     setData(null)
     setError(null)
@@ -33,7 +32,6 @@ export function useBalance360() {
       return
     }
 
-    // Pasos visuales mientras carga
     const fakeSteps = [
       `Consultando cache para "${clean}"...`,
       'Buscando presencia digital...',
@@ -41,44 +39,65 @@ export function useBalance360() {
       'Revisando redes sociales...',
       'Calculando BALANCE Score...'
     ]
-    let idx = 0
+
+    let index = 0
     const timer = setInterval(() => {
-      if (idx < fakeSteps.length) setSteps(prev => [...prev, fakeSteps[idx++]])
-      else clearInterval(timer)
+      if (index < fakeSteps.length) {
+        setSteps((previous) => [...previous, fakeSteps[index]])
+        index += 1
+        return
+      }
+      clearInterval(timer)
     }, 800)
 
     try {
-      const res = await fetch('/api/analyze', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ company: clean })
+      const response = await fetch('/api/analyze', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(options.accessToken ? { Authorization: `Bearer ${options.accessToken}` } : {})
+        },
+        body: JSON.stringify({
+          company: clean,
+          workspaceId: options.workspaceId || null,
+          companyId: options.companyId || null,
+          requestType: options.requestType || 'single_audit'
+        })
       })
 
       clearInterval(timer)
 
-      if (res.status === 429) {
+      if (response.status === 429) {
         setError('Límite de consultas alcanzado. Intenta en 60 segundos.')
         setStatus('error')
-        return
+        return null
       }
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}))
+
+      if (response.status === 403) {
+        const body = await response.json().catch(() => ({}))
+        setError(body.error || 'Tu plan actual no permite más análisis en este período.')
+        setStatus('error')
+        return null
+      }
+
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}))
         setError(body.error || 'Error al analizar. Intenta de nuevo.')
         setStatus('error')
-        return
+        return null
       }
 
-      const result = await res.json()
-
+      const result = await response.json()
       if (result.pasos?.length) setSteps(result.pasos)
       setFromCache(result.from_cache === true)
       setData(result)
       setStatus('success')
-
-    } catch (err) {
+      return result
+    } catch {
       clearInterval(timer)
       setError('Error de conexión. Verifica tu red e intenta de nuevo.')
       setStatus('error')
+      return null
     }
   }, [])
 

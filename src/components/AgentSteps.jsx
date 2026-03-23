@@ -1,4 +1,3 @@
-// src/components/AgentSteps.jsx
 import DOMPurify from 'dompurify'
 import { useEffect, useRef } from 'react'
 
@@ -11,15 +10,15 @@ export function AgentSteps({ steps = [], loading = false }) {
 
   if (!steps.length && !loading) return null
 
-  const safe = (str) => DOMPurify.sanitize(String(str || ''), { ALLOWED_TAGS: [] })
+  const safe = (text) => DOMPurify.sanitize(String(text || ''), { ALLOWED_TAGS: [] })
 
   return (
     <div className="balance360-card p-4 font-mono text-xs space-y-2 max-h-48 overflow-y-auto">
       <p className="text-balance360-muted uppercase tracking-widest text-xs mb-3">
         Agente en acción
       </p>
-      {steps.map((step, i) => (
-        <div key={i} className="step-item animate-fade-in-up">
+      {steps.map((step, index) => (
+        <div key={index} className="step-item animate-fade-in-up">
           <span className="text-balance360-accent mt-0.5 shrink-0">›</span>
           <span className="text-balance360-text">{safe(step)}</span>
         </div>
