@@ -11,6 +11,7 @@
     font-family: 'Space Grotesk', system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
     min-height: 100vh;
+    margin: 0;
   }
 
   ::selection {
@@ -21,7 +22,7 @@
 
 @layer components {
   .balance360-card {
-    @apply bg-balance360-card border border-balance360-border rounded-xl;
+    @apply bg-balance360-card border border-balance360-border rounded-2xl shadow-[0_16px_60px_rgba(0,0,0,0.22)];
   }
 
   .balance360-input {
@@ -38,6 +39,26 @@
            focus:outline-none focus:ring-2 focus:ring-balance360-accent/50;
   }
 
+  .balance360-btn-secondary {
+    @apply bg-transparent text-balance360-text border border-balance360-border hover:bg-balance360-surface;
+  }
+
+  .balance360-chip {
+    @apply px-3 py-2 rounded-md text-sm bg-balance360-surface text-balance360-text transition-colors;
+  }
+
+  .balance360-chip-active {
+    @apply bg-balance360-accent text-balance360-bg;
+  }
+
+  .balance360-tag {
+    @apply rounded-full border border-balance360-border bg-balance360-surface px-2.5 py-1 text-[11px] font-mono uppercase tracking-wider;
+  }
+
+  .balance360-surface-card {
+    @apply bg-balance360-surface border border-balance360-border rounded-xl p-4;
+  }
+
   .score-ring {
     transform-origin: center;
     transition: stroke-dashoffset 1.2s cubic-bezier(0.4, 0, 0.2, 1);
@@ -48,7 +69,7 @@
   }
 
   .frente-card {
-    @apply balance360-card p-4 hover:border-balance360-accent/40 transition-colors duration-200 cursor-default;
+    @apply balance360-card p-5 hover:border-balance360-accent/40 transition-colors duration-200 cursor-default;
   }
 }
 
@@ -88,6 +109,12 @@
   background: linear-gradient(90deg, #1C2333 25%, #243046 50%, #1C2333 75%);
   background-size: 200% 100%;
   animation: shimmer 1.8s infinite;
+}
+
+.balance360-page {
+  background-image:
+    radial-gradient(circle at top left, rgba(0, 229, 255, 0.06), transparent 28%),
+    radial-gradient(circle at top right, rgba(0, 230, 118, 0.04), transparent 24%);
 }
 
 /* Scrollbar personalizado */

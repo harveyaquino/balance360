@@ -18,6 +18,15 @@ const FRENTE_ICONS = {
   organic_mentions: '◌'
 }
 
+function sanitizeInsight(text) {
+  const cleaned = String(text || '')
+    .replace(/Anthropic\s+\d{3}:[\s\S]*/i, 'La fuente analítica todavía no está conectada a datos observables de este frente.')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  return DOMPurify.sanitize(cleaned, { ALLOWED_TAGS: [] })
+}
+
 function ScoreBar({ score }) {
   const color = score >= 75
     ? 'bg-balance360-success'
@@ -28,11 +37,29 @@ function ScoreBar({ score }) {
         : 'bg-balance360-danger'
 
   return (
-    <div className="w-full bg-balance360-border rounded-full h-1 mt-2">
+    <div className="w-full bg-balance360-border rounded-full h-1.5 mt-3">
       <div
-        className={`h-1 rounded-full transition-all duration-1000 ${color}`}
+        className={`h-1.5 rounded-full transition-all duration-1000 ${color}`}
         style={{ width: `${score}%` }}
       />
+    </div>
+  )
+}
+
+function InsightList({ title, items, tone }) {
+  if (!items?.length) return null
+
+  return (
+    <div className="mt-4">
+      <p className="text-balance360-muted text-[11px] uppercase tracking-[0.18em] mb-2">{title}</p>
+      <ul className="space-y-2">
+        {items.map((item, index) => (
+          <li key={index} className={`text-xs leading-5 flex gap-2 ${tone}`}>
+            <span className="mt-0.5 shrink-0">{title === 'Oportunidades' ? '+' : '—'}</span>
+            <span>{sanitizeInsight(item)}</span>
+          </li>
+        ))}
+      </ul>
     </div>
   )
 }
@@ -40,60 +67,35 @@ function ScoreBar({ score }) {
 export function FrenteCard({ name, data }) {
   const label = FRENTE_LABELS[name] || name
   const icon = FRENTE_ICONS[name] || '•'
-  const safe = (text) => DOMPurify.sanitize(String(text || ''), { ALLOWED_TAGS: [] })
+  const score = Number.isFinite(Number(data.score)) ? Number(data.score) : 0
 
   return (
     <div className="frente-card animate-fade-in-up">
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex items-start justify-between gap-3 mb-1">
         <div className="flex items-center gap-2">
           <span className="text-balance360-accent font-mono text-sm">{icon}</span>
           <span className="text-balance360-text font-medium text-sm">{label}</span>
         </div>
         <span
-          className="font-mono text-sm font-semibold"
+          className="font-mono text-base font-semibold"
           style={{
-            color: data.score >= 75
+            color: score >= 75
               ? '#00E676'
-              : data.score >= 50
+              : score >= 50
                 ? '#00E5FF'
-                : data.score >= 30
+                : score >= 30
                   ? '#FFB347'
                   : '#FF4757'
           }}
         >
-          {data.score}
+          {score}
         </span>
       </div>
 
-      <ScoreBar score={data.score} />
+      <ScoreBar score={score} />
 
-      {data.hallazgos?.length > 0 && (
-        <div className="mt-3">
-          <p className="text-balance360-muted text-xs uppercase tracking-wider mb-1">Hallazgos</p>
-          <ul className="space-y-1">
-            {data.hallazgos.map((hallazgo, index) => (
-              <li key={index} className="text-balance360-text text-xs flex gap-2">
-                <span className="text-balance360-muted mt-0.5">—</span>
-                <span>{safe(hallazgo)}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {data.oportunidades?.length > 0 && (
-        <div className="mt-3">
-          <p className="text-balance360-muted text-xs uppercase tracking-wider mb-1">Oportunidades</p>
-          <ul className="space-y-1">
-            {data.oportunidades.map((oportunidad, index) => (
-              <li key={index} className="text-balance360-success text-xs flex gap-2">
-                <span className="mt-0.5">+</span>
-                <span>{safe(oportunidad)}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+      <InsightList title="Hallazgos" items={data.hallazgos} tone="text-balance360-text" />
+      <InsightList title="Oportunidades" items={data.oportunidades} tone="text-balance360-success" />
     </div>
   )
 }

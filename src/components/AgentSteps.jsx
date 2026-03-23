@@ -13,9 +13,9 @@ export function AgentSteps({ steps = [], loading = false }) {
   const safe = (text) => DOMPurify.sanitize(String(text || ''), { ALLOWED_TAGS: [] })
 
   return (
-    <div className="balance360-card p-4 font-mono text-xs space-y-2 max-h-48 overflow-y-auto">
+    <div className="balance360-card p-5 font-mono text-xs space-y-2 max-h-56 overflow-y-auto">
       <p className="text-balance360-muted uppercase tracking-widest text-xs mb-3">
-        Agente en acción
+        Progreso del análisis
       </p>
       {steps.map((step, index) => (
         <div key={index} className="step-item animate-fade-in-up">

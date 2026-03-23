@@ -29,14 +29,14 @@ export function useBalance360() {
     if (!clean) {
       setError('Nombre de empresa inválido. Usa entre 2 y 120 caracteres.')
       setStatus('error')
-      return
+      return null
     }
 
     const fakeSteps = [
       `Consultando cache para "${clean}"...`,
-      'Buscando presencia digital...',
-      'Analizando reviews y ratings...',
-      'Revisando redes sociales...',
+      'Buscando señales públicas del producto...',
+      'Agrupando señales por frente...',
+      'Preparando lectura ejecutiva...',
       'Calculando BALANCE Score...'
     ]
 
@@ -68,7 +68,7 @@ export function useBalance360() {
       clearInterval(timer)
 
       if (response.status === 429) {
-        setError('Límite de consultas alcanzado. Intenta en 60 segundos.')
+        setError('Límite de consultas alcanzado. Intenta nuevamente en 60 segundos.')
         setStatus('error')
         return null
       }
@@ -82,7 +82,7 @@ export function useBalance360() {
 
       if (!response.ok) {
         const body = await response.json().catch(() => ({}))
-        setError(body.error || 'Error al analizar. Intenta de nuevo.')
+        setError(body.error || 'No pudimos completar el análisis. Intenta de nuevo.')
         setStatus('error')
         return null
       }
@@ -95,7 +95,7 @@ export function useBalance360() {
       return result
     } catch {
       clearInterval(timer)
-      setError('Error de conexión. Verifica tu red e intenta de nuevo.')
+      setError('Error de conexión. Verifica tu red e intenta nuevamente.')
       setStatus('error')
       return null
     }
