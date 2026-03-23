@@ -521,6 +521,10 @@ export default function App() {
   const [onboardingError, setOnboardingError] = useState('')
 
   const resultData = useMemo(() => normalizeResult(balance.data), [balance.data])
+  const effectiveWorkspaceId = useMemo(
+    () => workspace?.id || profile?.workspace_id || onboardingState?.workspace_id || null,
+    [workspace, profile, onboardingState]
+  )
 
   const loadContext = useCallback(async (userId, accessToken) => {
     setContextLoading(true)
@@ -666,10 +670,14 @@ export default function App() {
       return
     }
 
-    let activeWorkspaceId = workspace?.id || null
+    let activeWorkspaceId = effectiveWorkspaceId
     if (!activeWorkspaceId) {
       const context = await loadContext(session.user.id, session.access_token)
-      activeWorkspaceId = context?.workspace?.id || null
+      activeWorkspaceId =
+        context?.workspace?.id ||
+        context?.profile?.workspace_id ||
+        context?.onboarding?.workspace_id ||
+        null
     }
 
     if (!activeWorkspaceId) {
