@@ -308,6 +308,29 @@ async function getCachedAudit(supabase, company) {
   return data
 }
 
+function isLowQualityCachedAudit(audit) {
+  if (!audit) return true
+
+  const voice = String(audit.voz_usuario || '').toLowerCase()
+  const gap = String(audit.gap_principal || '').toLowerCase()
+  const hallazgos = Object.values(audit.frentes || {})
+    .flatMap((front) => Array.isArray(front?.hallazgos) ? front.hallazgos : [])
+    .join(' ')
+    .toLowerCase()
+
+  const stalePatterns = [
+    'contingencia',
+    'lectura preliminar',
+    'contexto técnico',
+    'anthropic',
+    'no encontramos señales públicas suficientes',
+    'no encontramos evidencia pública suficiente'
+  ]
+
+  const combined = `${voice} ${gap} ${hallazgos}`
+  return stalePatterns.some((pattern) => combined.includes(pattern))
+}
+
 async function resetProfileUsageIfNeeded(supabase, profile) {
   if (!supabase || !profile?.id || !profile.reset_at) return profile
   const now = new Date()
@@ -552,7 +575,7 @@ async function handleRequest(req, res) {
   })
 
   const cached = await getCachedAudit(supabase, company)
-  if (cached) {
+  if (cached && !isLowQualityCachedAudit(cached)) {
     let auditId = cached.id
 
     if (authUser?.id) {

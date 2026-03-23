@@ -4,6 +4,24 @@ function normalizeWhitespace(value) {
   return String(value || '').replace(/\s+/g, ' ').trim()
 }
 
+function normalizeName(value) {
+  return normalizeWhitespace(value).toLowerCase().replace(/[^a-z0-9\s]/g, ' ')
+}
+
+function tokenize(value) {
+  return normalizeName(value).split(' ').filter((token) => token.length >= 3)
+}
+
+function overlapScore(left, right) {
+  const leftTokens = tokenize(left)
+  const rightTokens = tokenize(right)
+  if (!leftTokens.length || !rightTokens.length) return 0
+
+  const rightSet = new Set(rightTokens)
+  const matches = leftTokens.filter((token) => rightSet.has(token)).length
+  return matches / Math.max(leftTokens.length, rightTokens.length)
+}
+
 function stripHtml(value) {
   return normalizeWhitespace(
     String(value || '')
@@ -182,16 +200,38 @@ async function getAppStoreEvidence(company) {
   try {
     const url = `https://itunes.apple.com/search?term=${encodeURIComponent(company)}&entity=software&limit=5`
     const data = await fetchJson(url)
-    const first = Array.isArray(data.results) ? data.results[0] : null
+    const results = Array.isArray(data.results) ? data.results : []
+    const companyTokens = tokenize(company)
+    const ranked = results
+      .map((item) => {
+        const titleScore = overlapScore(company, item.trackName || '')
+        const sellerScore = overlapScore(company, item.sellerName || '')
+        const combinedScore = Math.max(titleScore, sellerScore)
+        return { item, combinedScore, titleScore, sellerScore }
+      })
+      .filter((entry) => {
+        const title = normalizeName(entry.item.trackName || '')
+        const seller = normalizeName(entry.item.sellerName || '')
+        const companyName = normalizeName(company)
+        const directTitleMatch = companyName && title.includes(companyName)
+        const directSellerMatch = companyName && seller.includes(companyName)
+        const tokenMatch = companyTokens.some((token) => title.includes(token) || seller.includes(token))
+        return directTitleMatch || directSellerMatch || (tokenMatch && entry.combinedScore >= 0.34)
+      })
+      .sort((a, b) => b.combinedScore - a.combinedScore)
+
+    const first = ranked[0]?.item || null
+
     return {
       found: Boolean(first),
-      resultsCount: Array.isArray(data.results) ? data.results.length : 0,
+      resultsCount: results.length,
       app: first ? {
         name: first.trackName,
         seller: first.sellerName,
         averageRating: first.averageUserRating || null,
         ratingCount: first.userRatingCount || 0,
-        url: first.trackViewUrl || null
+        url: first.trackViewUrl || null,
+        relevanceScore: ranked[0]?.combinedScore || 0
       } : null
     }
   } catch (error) {
