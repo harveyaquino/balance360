@@ -1,6 +1,4 @@
-const { createClient } = require('@supabase/supabase-js')
-
-const fetch = global.fetch || require('node-fetch')
+import { createClient } from '@supabase/supabase-js'
 
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || ''
 const MAX_INPUT_LENGTH = 120
@@ -442,7 +440,7 @@ async function requestAnthropicAnalysis(apiKey, company) {
   return normalizeAuditResult(parsed, company)
 }
 
-module.exports = async function handler(req, res) {
+async function handleRequest(req, res) {
   const origin = req.headers.origin || ''
   const headers = corsHeaders(origin)
 
@@ -585,7 +583,7 @@ module.exports = async function handler(req, res) {
       status: 'completed',
       result_audit_id: savedFallback?.id || null,
       sector: fallback.sector,
-      error_message: error.message.slice(0, 500),
+      error_message: String(error.message || error).slice(0, 500),
       completed_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
     })
@@ -597,5 +595,25 @@ module.exports = async function handler(req, res) {
       from_cache: false,
       degraded: true
     })
+  }
+}
+
+export default async function handler(req, res) {
+  try {
+    return await handleRequest(req, res)
+  } catch (error) {
+    console.error('[BALANCE360] Fatal handler error:', error?.stack || error?.message || error)
+
+    try {
+      return res.status(500).json({
+        error: 'Error interno del servidor',
+        fatal: true,
+        detail: process.env.NODE_ENV === 'development'
+          ? String(error?.message || error)
+          : 'fatal_handler_error'
+      })
+    } catch {
+      return res.end('Internal Server Error')
+    }
   }
 }
