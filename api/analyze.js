@@ -254,96 +254,179 @@ function buildSystemPrompt(signals) {
 }
 
 function buildFallbackAudit(company, signals, details = '') {
-  const note = details ? ' El análisis enriquecido no estuvo disponible temporalmente.' : ''
-  const existenceHint = signals?.existenceLikely
-    ? `${company} muestra algunas señales públicas, pero el análisis enriquecido no pudo completarse.`
-    : `No encontramos señales públicas suficientes para confirmar una presencia digital consistente de ${company}.`
-  const hallazgoBase = `${existenceHint}${note}`.trim()
+  const toHostname = (url) => {
+    try {
+      return new URL(url).hostname.replace(/^www\./, '')
+    } catch {
+      return null
+    }
+  }
+
+  const appStore = signals?.app?.app_store || null
+  const playStore = signals?.app?.play_store || null
+  const mapsPlace = signals?.google_business?.place || null
+  const socialProfiles = Array.isArray(signals?.rrss?.profiles) ? signals.rrss.profiles : []
+  const organicTopLinks = Array.isArray(signals?.organic_mentions?.topLinks) ? signals.organic_mentions.topLinks : []
+  const rootCause = details
+    ? `Motor enriquecido no disponible (${details}).`
+    : 'Motor enriquecido no disponible temporalmente.'
+
   const detectedSignalsCount = [
     Boolean(signals?.web?.found),
     Boolean(signals?.google_business?.found),
-    Boolean(signals?.app?.app_store || signals?.app?.play_store || signals?.app?.found),
+    Boolean(appStore || playStore),
     Boolean((signals?.organic_mentions?.mentionsCount || 0) > 0),
-    Boolean((signals?.rrss?.count || 0) > 0)
+    Boolean(socialProfiles.length > 0)
   ].filter(Boolean).length
 
   let baseScore = signals?.confidenceScore
-    ? Math.max(28, Math.min(82, Math.round(signals.confidenceScore * 0.95)))
-    : 36
+    ? Math.max(24, Math.min(84, Math.round(signals.confidenceScore * 0.96)))
+    : 34
 
-  if (detectedSignalsCount >= 3) baseScore = Math.max(baseScore, 50)
-  else if (detectedSignalsCount >= 2) baseScore = Math.max(baseScore, 42)
+  if (detectedSignalsCount >= 4) baseScore = Math.max(baseScore, 56)
+  else if (detectedSignalsCount >= 3) baseScore = Math.max(baseScore, 48)
+  else if (detectedSignalsCount >= 2) baseScore = Math.max(baseScore, 40)
+
+  const webHallazgos = []
+  if (signals?.web?.found) {
+    const host = toHostname(signals?.web?.url) || 'dominio detectado'
+    webHallazgos.push(`Detectamos un dominio asociado a ${company}: ${host}.`)
+    if (signals?.web?.title) webHallazgos.push(`Titulo visible: "${String(signals.web.title).slice(0, 90)}".`)
+    if (signals?.web?.description) webHallazgos.push(`Descripcion publica: "${String(signals.web.description).slice(0, 120)}".`)
+  } else if (mapsPlace?.websiteUrl) {
+    const host = toHostname(mapsPlace.websiteUrl) || mapsPlace.websiteUrl
+    webHallazgos.push(`No hubo web directa, pero Google Maps referencia sitio: ${host}.`)
+  } else {
+    webHallazgos.push('No encontramos una web oficial clara en esta pasada publica.')
+  }
+  webHallazgos.push(rootCause)
+
+  const appHallazgos = []
+  if (appStore) {
+    appHallazgos.push(`App Store: "${appStore.name || 'app detectada'}"${appStore.seller ? ` por ${appStore.seller}` : ''}.`)
+    if (appStore.averageRating || appStore.ratingCount) {
+      appHallazgos.push(`Senales de rating iOS: ${appStore.averageRating || 's/d'} con ${appStore.ratingCount || 0} resenas.`)
+    }
+  }
+  if (playStore) {
+    appHallazgos.push(`Google Play: "${playStore.name || 'app detectada'}"${playStore.developer ? ` por ${playStore.developer}` : ''}.`)
+    if (playStore.rating || playStore.reviews) {
+      appHallazgos.push(`Senales de rating Android: ${playStore.rating || 's/d'} con ${playStore.reviews || 0} reviews.`)
+    }
+  }
+  if (!appHallazgos.length) {
+    appHallazgos.push(`No encontramos evidencia suficiente de app publica para ${company}.`)
+  }
+  appHallazgos.push(rootCause)
+
+  const rrssHallazgos = []
+  if (socialProfiles.length) {
+    const sample = socialProfiles
+      .slice(0, 3)
+      .map((profile) => toHostname(profile.href) || profile.href || profile.title)
+      .filter(Boolean)
+      .join(', ')
+    rrssHallazgos.push(`Detectamos ${socialProfiles.length} perfiles o senales sociales relevantes.`)
+    if (sample) rrssHallazgos.push(`Perfiles visibles: ${sample}.`)
+  } else {
+    rrssHallazgos.push('No encontramos perfiles sociales claros en esta pasada publica.')
+  }
+  rrssHallazgos.push(rootCause)
+
+  const reviewsHallazgos = []
+  const iosCount = appStore?.ratingCount || 0
+  const playCount = playStore?.reviews || 0
+  const mapsCount = mapsPlace?.ratingCount || 0
+  if (iosCount + playCount + mapsCount > 0) {
+    reviewsHallazgos.push(
+      `Hay senales de resenas publicas (iOS: ${iosCount}, Android: ${playCount}, Maps: ${mapsCount}).`
+    )
+    if (mapsPlace?.rating) reviewsHallazgos.push(`Rating visible en Maps: ${mapsPlace.rating}.`)
+  } else {
+    reviewsHallazgos.push('No encontramos suficientes resenas publicas verificables para sintetizar voz del usuario.')
+  }
+  reviewsHallazgos.push(rootCause)
+
+  const gbHallazgos = []
+  if (signals?.google_business?.found && mapsPlace) {
+    gbHallazgos.push(`Detectamos ficha de Maps: ${mapsPlace.name || company}.`)
+    if (mapsPlace.address) gbHallazgos.push(`Direccion visible: ${mapsPlace.address}.`)
+    if (mapsPlace.rating || mapsPlace.ratingCount) {
+      gbHallazgos.push(`Rating local: ${mapsPlace.rating || 's/d'} con ${mapsPlace.ratingCount || 0} resenas.`)
+    }
+  } else {
+    gbHallazgos.push('No encontramos una ficha clara de Google Business en esta consulta publica.')
+  }
+  gbHallazgos.push(rootCause)
+
+  const organicHallazgos = []
+  const mentions = signals?.organic_mentions?.mentionsCount || 0
+  if (mentions > 0) {
+    organicHallazgos.push(`Detectamos ${mentions} resultados organicos visibles para ${company}.`)
+    const topDomains = organicTopLinks
+      .slice(0, 3)
+      .map((item) => toHostname(item.href) || item.href)
+      .filter(Boolean)
+      .join(', ')
+    if (topDomains) organicHallazgos.push(`Fuentes organicas destacadas: ${topDomains}.`)
+  } else {
+    organicHallazgos.push(`No encontramos suficientes menciones organicas confiables para ${company}.`)
+  }
+  organicHallazgos.push(rootCause)
 
   return {
     company,
     sector: 'General',
     score: baseScore,
     voz_usuario: signals?.existenceLikely
-      ? `BALANCE360 detectó señales públicas iniciales de ${company}, pero aún faltan fuentes verificadas por frente para consolidar una lectura completa.`
-      : `BALANCE360 no encontró evidencia pública suficiente para validar digitalmente a ${company} con confianza.`,
-    gap_principal: signals?.existenceLikely
-      ? `Hace falta consolidar señales comparables de ${company} frente a sus competidores para obtener un score más preciso.`
-      : `Antes de emitir benchmark o insights, necesitamos confirmar si ${company} tiene presencia pública trazable en las fuentes monitoreadas.`,
+      ? `BALANCE360 detecto evidencia publica inicial de ${company}. Esta lectura usa senales observables y debe tomarse como analisis operativo de contingencia.`
+      : `BALANCE360 detecto evidencia publica limitada para ${company}. Mostramos una lectura de contingencia con trazas concretas de lo encontrado.`,
+    gap_principal: 'Falta consolidar fuentes verificadas por frente y benchmarking competitivo para reemplazar este modo de contingencia por una lectura enriquecida completa.',
     pasos: [
-      `Inicializando auditoría de ${company}`,
-      'Recolectando señales públicas del producto',
-      'Aplicando respuesta preliminar basada en evidencia observable'
+      `Inicializando auditoria de ${company}`,
+      'Recolectando senales publicas del producto',
+      'Construyendo lectura ejecutiva de contingencia con evidencia observable'
     ],
     frentes: {
       app: {
-        label: 'App móvil',
-        score: signals?.app?.found ? 54 : 18,
-        hallazgos: [signals?.app?.found
-          ? `Encontramos una señal en App Store para ${company}. ${hallazgoBase}`
-          : `No encontramos evidencia suficiente de app pública para ${company}.${note}`.trim()],
-        oportunidades: ['Validar presencia real en App Store y Google Play, rating, volumen de reseñas y desempeño funcional.']
+        label: 'App movil',
+        score: appStore || playStore ? 54 : 18,
+        hallazgos: appHallazgos.slice(0, 4),
+        oportunidades: ['Validar presencia real en App Store y Google Play, rating, volumen de resenas y desempeno funcional.']
       },
       web: {
         label: 'Web',
         score: signals?.web?.found ? 62 : 24,
-        hallazgos: [signals?.web?.found
-          ? `Detectamos sitio o dominio asociado a ${company}: ${signals.web.url || 'sin URL visible'}.`
-          : 'No encontramos una web oficial clara en esta primera pasada.'],
-        oportunidades: ['Validar dominio oficial, claridad de navegación, performance y conversión por flujo principal.']
+        hallazgos: webHallazgos.slice(0, 4),
+        oportunidades: ['Validar dominio oficial, claridad de navegacion, performance y conversion por flujo principal.']
       },
       rrss: {
         label: 'Redes sociales',
-        score: signals?.rrss?.count ? Math.min(70, 28 + signals.rrss.count * 12) : 20,
-        hallazgos: [signals?.rrss?.count
-          ? `Detectamos ${signals.rrss.count} perfiles o señales sociales relacionadas con ${company}.`
-          : 'No encontramos perfiles sociales claros en esta pasada pública.'],
-        oportunidades: ['Comparar frecuencia, tono y respuesta a usuarios frente a competidores directos.']
+        score: socialProfiles.length ? Math.min(72, 30 + socialProfiles.length * 11) : 20,
+        hallazgos: rrssHallazgos.slice(0, 4),
+        oportunidades: ['Comparar frecuencia, tono y tiempo de respuesta a usuarios frente a competidores directos.']
       },
       reviews: {
         label: 'Reviews',
         score: signals?.reviews?.found ? 52 : 18,
-        hallazgos: [signals?.reviews?.found
-          ? 'Hay señales iniciales de reseñas públicas, pero aún falta consolidación cross-platform.'
-          : 'No encontramos suficientes reseñas públicas verificadas para sintetizar voz del usuario.'],
-        oportunidades: ['Agrupar fricciones repetidas por producto, soporte, pagos y experiencia cuando conectemos fuentes de reviews.']
+        hallazgos: reviewsHallazgos.slice(0, 4),
+        oportunidades: ['Agrupar fricciones repetidas por producto, soporte, pagos y experiencia cuando conectemos mas fuentes de reviews.']
       },
       google_business: {
         label: 'Google Business',
         score: signals?.google_business?.found ? 58 : 20,
-        hallazgos: [signals?.google_business?.found
-          ? `Se detectó una posible ficha o resultado de Maps para ${company}.`
-          : 'No encontramos una ficha clara de Google Business en esta consulta pública.'],
-        oportunidades: ['Auditar reputación local, respuesta a reseñas y consistencia de ficha.']
+        hallazgos: gbHallazgos.slice(0, 4),
+        oportunidades: ['Auditar reputacion local, respuesta a resenas y consistencia de ficha.']
       },
       organic_mentions: {
-        label: 'Menciones orgánicas',
-        score: signals?.organic_mentions?.mentionsCount
-          ? Math.min(72, 24 + signals.organic_mentions.mentionsCount * 7)
-          : 16,
-        hallazgos: [signals?.organic_mentions?.mentionsCount
-          ? `Detectamos ${signals.organic_mentions.mentionsCount} resultados orgánicos visibles para ${company}.`
-          : `No encontramos suficientes menciones orgánicas confiables para ${company}.`],
+        label: 'Menciones organicas',
+        score: mentions ? Math.min(74, 24 + mentions * 6) : 16,
+        hallazgos: organicHallazgos.slice(0, 4),
         oportunidades: ['Monitorear share of voice, SEO de marca y menciones en medios y foros.']
       }
     }
   }
 }
-
 function getSupabaseClient() {
   const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -723,30 +806,6 @@ async function handleRequest(req, res) {
   }
 
   try {
-    if (!publicSignals.existenceLikely) {
-      const fallback = buildFallbackAudit(company, publicSignals, 'Sin evidencia pública suficiente')
-      const savedFallback = await saveAudit(supabase, fallback, authUser?.id || null)
-
-      await updateAnalysisRequest(supabase, analysisRequest?.id, {
-        status: 'completed',
-        result_audit_id: savedFallback?.id || null,
-        sector: fallback.sector,
-        error_message: 'Respuesta preliminar por falta de evidencia pública',
-        completed_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      })
-
-      return res.status(200).json({
-        ...fallback,
-        audit_id: savedFallback?.id || null,
-        from_cache: false,
-        degraded: true,
-        signal_confidence: publicSignals.confidenceScore,
-        signals_evidence: publicSignals.evidence,
-        data_quality: publicSignals.existenceLikely ? 'verified_signals' : 'weak_signals'
-      })
-    }
-
     const normalized = await requestAnthropicAnalysis(apiKey, company, publicSignals)
     const reconciled = reconcileAuditWithSignals(normalized, publicSignals)
     const savedAudit = await saveAudit(supabase, reconciled, authUser?.id || null)
