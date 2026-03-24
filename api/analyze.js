@@ -267,9 +267,7 @@ function buildFallbackAudit(company, signals, details = '') {
   const mapsPlace = signals?.google_business?.place || null
   const socialProfiles = Array.isArray(signals?.rrss?.profiles) ? signals.rrss.profiles : []
   const organicTopLinks = Array.isArray(signals?.organic_mentions?.topLinks) ? signals.organic_mentions.topLinks : []
-  const rootCause = details
-    ? `Motor enriquecido no disponible (${details}).`
-    : 'Motor enriquecido no disponible temporalmente.'
+  const rootCause = 'Motor enriquecido no disponible temporalmente; usando lectura de contingencia basada en señales públicas.'
 
   const detectedSignalsCount = [
     Boolean(signals?.web?.found),

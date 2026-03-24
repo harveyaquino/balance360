@@ -28,7 +28,9 @@ function formatDate(value) {
 function cleanExecutiveText(text) {
   return safeText(
     String(text || '')
-      .replace(/Anthropic\s+\d{3}:[\s\S]*/i, '')
+      .replace(/Anthropic\s+\d{3}:[\s\S]*/i, 'Fuente analítica temporalmente no disponible.')
+      .replace(/\(\s*\)/g, '')
+      .replace(/\(\s*$/g, '')
       .replace(/\s+/g, ' ')
       .trim()
   )
