@@ -36,6 +36,11 @@ function cleanExecutiveText(text) {
   )
 }
 
+
+function cleanExecutiveList(list, limit = 6) {
+  if (!Array.isArray(list)) return []
+  return list.map((item) => cleanExecutiveText(item)).filter(Boolean).slice(0, limit)
+}
 function normalizeResult(data) {
   if (!data) return null
 
@@ -63,8 +68,27 @@ function normalizeResult(data) {
   return {
     ...data,
     degraded,
+    resumen_ejecutivo: cleanExecutiveText(data.resumen_ejecutivo),
     voz_usuario: cleanExecutiveText(data.voz_usuario),
     gap_principal: cleanExecutiveText(data.gap_principal),
+    riesgos_clave: cleanExecutiveList(data.riesgos_clave, 3),
+    palancas_crecimiento: cleanExecutiveList(data.palancas_crecimiento, 3),
+    quick_wins_30_dias: cleanExecutiveList(data.quick_wins_30_dias, 3),
+    benchmark_competitivo: {
+      posicion_relativa: cleanExecutiveText(data?.benchmark_competitivo?.posicion_relativa),
+      competidores: Array.isArray(data?.benchmark_competitivo?.competidores)
+        ? data.benchmark_competitivo.competidores
+          .map((item) => ({
+            name: cleanExecutiveText(item?.name),
+            score: Number.isFinite(Number(item?.score)) ? Number(item.score) : 0,
+            fortaleza: cleanExecutiveText(item?.fortaleza),
+            brecha: cleanExecutiveText(item?.brecha)
+          }))
+          .filter((item) => item.name)
+          .slice(0, 2)
+        : [],
+      brechas_clave: cleanExecutiveList(data?.benchmark_competitivo?.brechas_clave, 4)
+    },
     frentes
   }
 }
@@ -287,11 +311,97 @@ function ResultSummary({ data, fromCache }) {
   )
 }
 
+function StrategyPanel({ data }) {
+  const hasContent = data?.resumen_ejecutivo || data?.riesgos_clave?.length || data?.palancas_crecimiento?.length || data?.quick_wins_30_dias?.length
+  if (!hasContent) return null
+
+  const blocks = [
+    { title: 'Riesgos clave', items: data.riesgos_clave, tone: 'text-balance360-danger' },
+    { title: 'Palancas de crecimiento', items: data.palancas_crecimiento, tone: 'text-balance360-accent' },
+    { title: 'Quick wins (30 días)', items: data.quick_wins_30_dias, tone: 'text-balance360-success' }
+  ]
+
+  return (
+    <div className="balance360-card p-6 mb-6">
+      <p className="text-balance360-accent text-[11px] font-mono uppercase tracking-[0.22em] mb-2">
+        Modo estratega
+      </p>
+      {data.resumen_ejecutivo && (
+        <p className="text-balance360-text text-sm leading-7 mb-5">{data.resumen_ejecutivo}</p>
+      )}
+
+      <div className="grid md:grid-cols-3 gap-4">
+        {blocks.map((block) => (
+          <div key={block.title} className="balance360-surface-card">
+            <p className="text-balance360-muted text-[11px] uppercase tracking-wider mb-3">{block.title}</p>
+            {!block.items?.length && <p className="text-balance360-muted text-xs">Sin datos suficientes para este bloque.</p>}
+            {block.items?.length > 0 && (
+              <ul className="space-y-2">
+                {block.items.map((item, index) => (
+                  <li key={`${block.title}-${index}`} className={`text-xs leading-6 ${block.tone}`}>
+                    {index + 1}. {item}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function BenchmarkPanel({ data }) {
+  const benchmark = data?.benchmark_competitivo
+  const competitors = Array.isArray(benchmark?.competidores) ? benchmark.competidores : []
+  const hasContent = benchmark?.posicion_relativa || benchmark?.brechas_clave?.length || competitors.length
+  if (!hasContent) return null
+
+  return (
+    <div className="balance360-card p-6 mb-6">
+      <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
+        <p className="text-balance360-text text-sm font-semibold">Benchmark competitivo (2 competidores)</p>
+        <span className="balance360-tag text-balance360-accent">comparativo estratégico</span>
+      </div>
+
+      {benchmark.posicion_relativa && (
+        <p className="text-balance360-muted text-sm leading-7 mb-4">{benchmark.posicion_relativa}</p>
+      )}
+
+      <div className="grid md:grid-cols-2 gap-4 mb-4">
+        {competitors.map((item) => (
+          <div key={item.name} className="balance360-surface-card">
+            <div className="flex items-center justify-between gap-3 mb-2">
+              <p className="text-balance360-text font-semibold">{item.name}</p>
+              <span className="text-balance360-accent font-mono text-sm">{item.score}</span>
+            </div>
+            {item.fortaleza && <p className="text-balance360-muted text-xs leading-6 mb-2"><span className="text-balance360-success">Fortaleza:</span> {item.fortaleza}</p>}
+            {item.brecha && <p className="text-balance360-muted text-xs leading-6"><span className="text-balance360-danger">Brecha:</span> {item.brecha}</p>}
+          </div>
+        ))}
+      </div>
+
+      {benchmark?.brechas_clave?.length > 0 && (
+        <div className="rounded-xl border border-balance360-border bg-balance360-surface/50 p-4">
+          <p className="text-balance360-muted text-[11px] uppercase tracking-wider mb-2">Brechas clave frente al mercado</p>
+          <ul className="space-y-2">
+            {benchmark.brechas_clave.map((item, index) => (
+              <li key={`brecha-${index}`} className="text-balance360-text text-xs leading-6">{index + 1}. {item}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function Results({ data, fromCache, onReset }) {
   return (
     <div className="max-w-5xl mx-auto px-4 pb-16 animate-fade-in-up">
       <ResultBanner degraded={data.degraded} />
       <ResultSummary data={data} fromCache={fromCache} />
+      <StrategyPanel data={data} />
+      <BenchmarkPanel data={data} />
       <EvidencePanel data={data} />
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 mb-8">

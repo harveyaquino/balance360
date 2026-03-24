@@ -88,6 +88,28 @@ function normalizeList(value) {
   return value.map((item) => normalizeText(item)).filter(Boolean).slice(0, 6)
 }
 
+function normalizeCompetitors(value) {
+  if (!Array.isArray(value)) return []
+  return value
+    .map((item) => ({
+      name: normalizeText(item?.name),
+      score: normalizeScore(item?.score, 0),
+      fortaleza: normalizeText(item?.fortaleza),
+      brecha: normalizeText(item?.brecha)
+    }))
+    .filter((item) => item.name)
+    .slice(0, 2)
+}
+
+function normalizeBenchmark(value) {
+  const source = value && typeof value === 'object' ? value : {}
+  return {
+    posicion_relativa: normalizeText(source.posicion_relativa),
+    competidores: normalizeCompetitors(source.competidores),
+    brechas_clave: normalizeList(source.brechas_clave).slice(0, 4)
+  }
+}
+
 function normalizeScore(value, fallback = 0) {
   const parsed = Number(value)
   if (!Number.isFinite(parsed)) return fallback
@@ -120,8 +142,13 @@ function normalizeAuditResult(raw, company) {
     company: normalizeText(source.company, company),
     sector: normalizeText(source.sector, 'General'),
     score: normalizeScore(source.score, 0),
+    resumen_ejecutivo: normalizeText(source.resumen_ejecutivo),
     voz_usuario: normalizeText(source.voz_usuario),
     gap_principal: normalizeText(source.gap_principal),
+    riesgos_clave: normalizeList(source.riesgos_clave).slice(0, 3),
+    palancas_crecimiento: normalizeList(source.palancas_crecimiento).slice(0, 3),
+    quick_wins_30_dias: normalizeList(source.quick_wins_30_dias).slice(0, 3),
+    benchmark_competitivo: normalizeBenchmark(source.benchmark_competitivo),
     pasos: normalizeList(source.pasos),
     frentes: {
       app: normalizeFront(pickFront(frentes, ['app', 'mobile_app', 'app_movil']), 'App móvil'),
@@ -238,8 +265,20 @@ function buildSystemPrompt(signals) {
     '  "company": "string",',
     '  "sector": "string",',
     '  "score": 0,',
+    '  "resumen_ejecutivo": "string",',
     '  "voz_usuario": "string",',
     '  "gap_principal": "string",',
+    '  "riesgos_clave": ["string"],',
+    '  "palancas_crecimiento": ["string"],',
+    '  "quick_wins_30_dias": ["string"],',
+    '  "benchmark_competitivo": {',
+    '    "posicion_relativa": "string",',
+    '    "competidores": [',
+    '      { "name": "string", "score": 0, "fortaleza": "string", "brecha": "string" },',
+    '      { "name": "string", "score": 0, "fortaleza": "string", "brecha": "string" }',
+    '    ],',
+    '    "brechas_clave": ["string"]',
+    '  },',
     '  "pasos": ["string"],',
     '  "frentes": {',
     '    "app": { "score": 0, "hallazgos": ["string"], "oportunidades": ["string"] },',
@@ -250,11 +289,36 @@ function buildSystemPrompt(signals) {
     '    "organic_mentions": { "score": 0, "hallazgos": ["string"], "oportunidades": ["string"] }',
     '  }',
     '}',
+    'Incluye exactamente 2 competidores directos relevantes por mercado/sector, aunque sean inferidos con prudencia.',
+    'No uses placeholders: evita "competidor 1/2", usa nombres reales de marcas.',
     'Si no tienes certeza, infiere con prudencia y deja constancia en hallazgos u oportunidades.',
     'Mantén el lenguaje ejecutivo, concreto y útil para product managers, directores digitales y CMOs.',
     'EVIDENCIA DISPONIBLE:',
     buildSignalsSummary(signals)
   ].join('\n')
+}
+
+function inferFallbackCompetitors(company) {
+  const key = String(company || '').toLowerCase()
+
+  if (/scotiabank|bbva|interbank|bcp|banco|banbif/.test(key)) {
+    return [
+      { name: 'BCP', score: 66, fortaleza: 'Mayor alcance digital y recordación de marca en banca retail.', brecha: 'Velocidad de iteración en experiencia móvil y comunicación de beneficios.' },
+      { name: 'BBVA', score: 64, fortaleza: 'Ecosistema de app y web con mejor continuidad de flujos.', brecha: 'Consistencia de reputación y respuesta en canales públicos.' }
+    ]
+  }
+
+  if (/claro|movistar|entel|wom|bitel|telco|telecom/.test(key)) {
+    return [
+      { name: 'Movistar', score: 62, fortaleza: 'Presencia orgánica y social más estable por volumen de marca.', brecha: 'Calidad percibida en soporte digital y tiempos de respuesta.' },
+      { name: 'Entel', score: 60, fortaleza: 'Mensaje comercial más consistente en campañas digitales.', brecha: 'Claridad de propuesta digital por segmento y autoservicio.' }
+    ]
+  }
+
+  return [
+    { name: 'Competidor líder del sector', score: 63, fortaleza: 'Mayor madurez de marca y distribución digital.', brecha: 'Consistencia de experiencia y conversión en puntos críticos.' },
+    { name: 'Competidor retador', score: 58, fortaleza: 'Ejecución más ágil en contenido y performance digital.', brecha: 'Diferenciación funcional visible en canales públicos.' }
+  ]
 }
 
 function buildFallbackAudit(company, signals, details = '') {
@@ -375,15 +439,46 @@ function buildFallbackAudit(company, signals, details = '') {
     organicHallazgos.push(`No encontramos suficientes menciones organicas confiables para ${company}.`)
   }
   organicHallazgos.push(rootCause)
+  const competitors = inferFallbackCompetitors(company)
+  const competitorAverage = competitors.length
+    ? Math.round(competitors.reduce((acc, item) => acc + (Number(item.score) || 0), 0) / competitors.length)
+    : 0
 
   return {
     company,
     sector: 'General',
     score: baseScore,
+    resumen_ejecutivo: `${company} muestra señales digitales visibles pero todavía fragmentadas. La prioridad es pasar de detección de presencia a ejecución consistente en adquisición, experiencia y reputación.`,
     voz_usuario: signals?.existenceLikely
       ? `BALANCE360 detecto evidencia publica inicial de ${company}. Esta lectura usa senales observables y debe tomarse como analisis operativo de contingencia.`
       : `BALANCE360 detecto evidencia publica limitada para ${company}. Mostramos una lectura de contingencia con trazas concretas de lo encontrado.`,
     gap_principal: 'Falta consolidar fuentes verificadas por frente y benchmarking competitivo para reemplazar este modo de contingencia por una lectura enriquecida completa.',
+    riesgos_clave: [
+      'Perder share of search y demanda incremental por baja consistencia de presencia cross-canal.',
+      'Deterioro de confianza por señales de reputación no gestionadas de forma continua.',
+      'Decisiones de producto y marketing con evidencia incompleta frente a competidores.'
+    ],
+    palancas_crecimiento: [
+      'Orquestar narrativa única entre web, app y canales sociales para mejorar conversión.',
+      'Priorizar gestión de reviews y respuesta pública para mover percepción de servicio.',
+      'Optimizar rutas de autoservicio y onboarding en frentes con mayor fricción visible.'
+    ],
+    quick_wins_30_dias: [
+      'Definir tablero semanal de señales por frente con responsables y umbrales.',
+      'Corregir 3 fricciones de alto impacto en web/app detectadas en hallazgos.',
+      'Implementar protocolo de respuesta pública en reviews y redes con SLA operativo.'
+    ],
+    benchmark_competitivo: {
+      posicion_relativa: competitorAverage
+        ? `${company} se ubica ${baseScore >= competitorAverage ? 'en paridad relativa' : 'por debajo'} frente al promedio de 2 competidores de referencia (${competitorAverage}/100).`
+        : `${company} requiere benchmark estructurado para definir su posición relativa.`,
+      competidores: competitors,
+      brechas_clave: [
+        'Menor consistencia de señal pública entre frentes críticos.',
+        'Conversión y experiencia digital con baja evidencia de optimización continua.',
+        'Gestión reputacional menos sistemática que referentes del sector.'
+      ]
+    },
     pasos: [
       `Inicializando auditoria de ${company}`,
       'Recolectando senales publicas del producto',
