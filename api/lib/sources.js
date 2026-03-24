@@ -1,4 +1,4 @@
-const USER_AGENT = 'Mozilla/5.0 (compatible; BALANCE360/0.5; +https://balance360.app)'
+﻿const USER_AGENT = 'Mozilla/5.0 (compatible; BALANCE360/0.5; +https://balance360.app)'
 
 function normalizeWhitespace(value) {
   return String(value || '').replace(/\s+/g, ' ').trim()
@@ -133,7 +133,13 @@ function pickSocialLinks(search) {
   return search.links.filter((item) => known.some((domain) => item.href.includes(domain))).slice(0, 5)
 }
 
-async function getWebsiteEvidence(company) {
+function withMarket(query, marketCountry) {
+  const market = normalizeWhitespace(marketCountry)
+  if (!market) return query
+  return `${query} ${market}`.trim()
+}
+
+async function getWebsiteEvidence(company, marketCountry = '') {
   const directCandidates = [
     `https://${company.toLowerCase().replace(/\s+/g, '')}.com`,
     `https://www.${company.toLowerCase().replace(/\s+/g, '')}.com`
@@ -156,7 +162,7 @@ async function getWebsiteEvidence(company) {
     }
   }
 
-  const search = await searchDuckDuckGo(`${company} sitio oficial`)
+  const search = await searchDuckDuckGo(withMarket(`${company} sitio oficial`, marketCountry))
   const official = pickOfficialWebsite(company, search)
   return {
     found: Boolean(official),
@@ -167,8 +173,8 @@ async function getWebsiteEvidence(company) {
   }
 }
 
-async function getOrganicEvidence(company) {
-  const search = await searchDuckDuckGo(company)
+async function getOrganicEvidence(company, marketCountry = '') {
+  const search = await searchDuckDuckGo(withMarket(company, marketCountry))
   return {
     found: search.links.length > 0,
     mentionsCount: search.links.length,
@@ -177,8 +183,8 @@ async function getOrganicEvidence(company) {
   }
 }
 
-async function getSocialEvidence(company) {
-  const search = await searchDuckDuckGo(`${company} linkedin instagram facebook x`)
+async function getSocialEvidence(company, marketCountry = '') {
+  const search = await searchDuckDuckGo(withMarket(`${company} linkedin instagram facebook x`, marketCountry))
   const links = pickSocialLinks(search)
   return {
     found: links.length > 0,
@@ -187,14 +193,14 @@ async function getSocialEvidence(company) {
   }
 }
 
-async function getGooglePlacesEvidence(company) {
+async function getGooglePlacesEvidence(company, marketCountry = '') {
   const apiKey = process.env.GOOGLE_MAPS_API_KEY
   if (!apiKey) {
     return { found: false, source: 'google_places', error: 'GOOGLE_MAPS_API_KEY no configurada' }
   }
 
   try {
-    const body = { textQuery: company, languageCode: 'es' }
+    const body = { textQuery: withMarket(company, marketCountry), languageCode: 'es' }
     const data = await fetchJson('https://places.googleapis.com/v1/places:searchText', {
       method: 'POST',
       headers: {
@@ -235,9 +241,9 @@ async function getGooglePlacesEvidence(company) {
   }
 }
 
-async function getAppStoreEvidence(company) {
+async function getAppStoreEvidence(company, marketCountry = '') {
   try {
-    const url = `https://itunes.apple.com/search?term=${encodeURIComponent(company)}&entity=software&limit=5`
+    const url = `https://itunes.apple.com/search?term=${encodeURIComponent(withMarket(company, marketCountry))}&entity=software&limit=5`
     const data = await fetchJson(url)
     const results = Array.isArray(data.results) ? data.results : []
     const ranked = results
@@ -270,14 +276,14 @@ async function getAppStoreEvidence(company) {
   }
 }
 
-async function getPlayStoreEvidence(company) {
+async function getPlayStoreEvidence(company, marketCountry = '') {
   const apiKey = process.env.SERPAPI_API_KEY
   if (!apiKey) {
     return { found: false, source: 'serpapi', error: 'SERPAPI_API_KEY no configurada', app: null }
   }
 
   try {
-    const searchUrl = `https://serpapi.com/search.json?engine=google_play&store=apps&q=${encodeURIComponent(company)}&api_key=${encodeURIComponent(apiKey)}`
+    const searchUrl = `https://serpapi.com/search.json?engine=google_play&store=apps&q=${encodeURIComponent(withMarket(company, marketCountry))}&api_key=${encodeURIComponent(apiKey)}`
     const searchData = await fetchJson(searchUrl)
     const appResults = Array.isArray(searchData.apps_results) ? searchData.apps_results : []
 
@@ -326,14 +332,15 @@ async function getPlayStoreEvidence(company) {
   }
 }
 
-export async function collectPublicSignals(company) {
+export async function collectPublicSignals(company, options = {}) {
+  const marketCountry = normalizeWhitespace(options.marketCountry || '')
   const [website, organic, social, maps, appStore, playStore] = await Promise.all([
-    getWebsiteEvidence(company),
-    getOrganicEvidence(company),
-    getSocialEvidence(company),
-    getGooglePlacesEvidence(company),
-    getAppStoreEvidence(company),
-    getPlayStoreEvidence(company)
+    getWebsiteEvidence(company, marketCountry),
+    getOrganicEvidence(company, marketCountry),
+    getSocialEvidence(company, marketCountry),
+    getGooglePlacesEvidence(company, marketCountry),
+    getAppStoreEvidence(company, marketCountry),
+    getPlayStoreEvidence(company, marketCountry)
   ])
 
   const confidenceScore = scoreFromSignals({
@@ -347,6 +354,7 @@ export async function collectPublicSignals(company) {
 
   return {
     company,
+    marketCountry,
     confidenceScore,
     existenceLikely: confidenceScore >= 36,
     web: website,
@@ -394,7 +402,8 @@ export async function collectPublicSignals(company) {
 export function buildSignalsSummary(signals) {
   const lines = [
     `Empresa evaluada: ${signals.company}`,
-    `Probabilidad de existencia pública detectable: ${signals.existenceLikely ? 'alta' : 'baja'} (${signals.confidenceScore}/100)`
+    `Mercado objetivo: ${signals.marketCountry || 'sin especificar'}`,
+    `Probabilidad de existencia pÃºblica detectable: ${signals.existenceLikely ? 'alta' : 'baja'} (${signals.confidenceScore}/100)`
   ]
 
   lines.push(
@@ -405,7 +414,7 @@ export function buildSignalsSummary(signals) {
 
   lines.push(
     signals.google_business?.found
-      ? `Google Business: señal real detectada (${signals.google_business.place?.name || 'ficha encontrada'})`
+      ? `Google Business: seÃ±al real detectada (${signals.google_business.place?.name || 'ficha encontrada'})`
       : 'Google Business: no encontrada'
   )
 
@@ -422,10 +431,10 @@ export function buildSignalsSummary(signals) {
   )
 
   lines.push(`Redes sociales: ${signals.rrss.count || 0} perfiles detectados`)
-  lines.push(`Menciones orgánicas: ${signals.organic_mentions.mentionsCount || 0} resultados visibles`)
+  lines.push(`Menciones orgÃ¡nicas: ${signals.organic_mentions.mentionsCount || 0} resultados visibles`)
 
   if (signals.organic_mentions.snippets?.length) {
-    lines.push('Snippets orgánicos relevantes:')
+    lines.push('Snippets orgÃ¡nicos relevantes:')
     signals.organic_mentions.snippets.slice(0, 3).forEach((item, index) => {
       lines.push(`${index + 1}. ${item}`)
     })
@@ -433,4 +442,3 @@ export function buildSignalsSummary(signals) {
 
   return lines.join('\n')
 }
-
