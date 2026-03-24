@@ -33,7 +33,9 @@ export function useBalance360() {
     }
 
     const fakeSteps = [
-      `Consultando cache para "${clean}"...`,
+      options.forceRefresh
+        ? `Forzando recálculo sin cache para "${clean}"...`
+        : `Consultando cache para "${clean}"...`,
       'Buscando señales públicas del producto...',
       'Agrupando señales por frente...',
       'Preparando lectura ejecutiva...',
@@ -61,7 +63,8 @@ export function useBalance360() {
           company: clean,
           workspaceId: options.workspaceId || null,
           companyId: options.companyId || null,
-          requestType: options.requestType || 'single_audit'
+          requestType: options.requestType || 'single_audit',
+          forceRefresh: options.forceRefresh === true
         })
       })
 

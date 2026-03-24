@@ -93,6 +93,7 @@ export async function completeOnboarding({
   companyName,
   sector,
   primaryCompetitor,
+  secondaryCompetitor,
   jobTitle
 }) {
   const cleanCompany = companyName.trim()
@@ -153,6 +154,21 @@ export async function completeOnboarding({
           competitor_slug: slugify(primaryCompetitor),
           source: 'manual',
           confidence: 1
+        }, { onConflict: 'company_id,competitor_slug' })
+    )
+  }
+
+  if (secondaryCompetitor?.trim()) {
+    updates.push(
+      supabase
+        .from('company_competitors')
+        .upsert({
+          workspace_id: workspaceId,
+          company_id: company.id,
+          competitor_name: secondaryCompetitor.trim(),
+          competitor_slug: slugify(secondaryCompetitor),
+          source: 'manual',
+          confidence: 0.95
         }, { onConflict: 'company_id,competitor_slug' })
     )
   }

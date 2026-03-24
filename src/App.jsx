@@ -68,6 +68,7 @@ function normalizeResult(data) {
   return {
     ...data,
     degraded,
+    mercado: cleanExecutiveText(data.mercado),
     resumen_ejecutivo: cleanExecutiveText(data.resumen_ejecutivo),
     voz_usuario: cleanExecutiveText(data.voz_usuario),
     gap_principal: cleanExecutiveText(data.gap_principal),
@@ -89,6 +90,18 @@ function normalizeResult(data) {
         : [],
       brechas_clave: cleanExecutiveList(data?.benchmark_competitivo?.brechas_clave, 4)
     },
+    benchmark_por_frente: Array.isArray(data?.benchmark_por_frente)
+      ? data.benchmark_por_frente
+        .map((item) => ({
+          frente: cleanExecutiveText(item?.frente),
+          label: cleanExecutiveText(item?.label) || cleanExecutiveText(item?.frente),
+          score_objetivo: Number.isFinite(Number(item?.score_objetivo)) ? Number(item.score_objetivo) : 0,
+          score_competencia: Number.isFinite(Number(item?.score_competencia)) ? Number(item.score_competencia) : 0,
+          delta: Number.isFinite(Number(item?.delta)) ? Number(item.delta) : 0
+        }))
+        .filter((item) => item.frente)
+        .slice(0, 6)
+      : [],
     frentes
   }
 }
@@ -182,7 +195,7 @@ function Hero({ onAnalyze, loading }) {
           className="balance360-btn whitespace-nowrap"
           disabled={!input.trim() || loading}
         >
-          {loading ? 'Analizando...' : 'Analizar →'}
+          {loading ? 'Analizando...' : 'Analizar ->'}
         </button>
       </form>
       <p className="text-balance360-muted text-xs mt-4">
@@ -289,6 +302,7 @@ function ResultSummary({ data, fromCache }) {
             <span className="text-balance360-muted text-xs font-mono uppercase tracking-widest">
               {safeText(data.sector)}
             </span>
+            {data.mercado && <span className="balance360-tag text-balance360-accent">{safeText(data.mercado)}</span>}
             <span className="balance360-tag text-balance360-text">{maturity}</span>
             {fromCache && <span className="balance360-tag text-balance360-accent">desde cache</span>}
             {data.degraded && <span className="balance360-tag text-balance360-warn">lectura preliminar</span>}
@@ -354,7 +368,8 @@ function StrategyPanel({ data }) {
 function BenchmarkPanel({ data }) {
   const benchmark = data?.benchmark_competitivo
   const competitors = Array.isArray(benchmark?.competidores) ? benchmark.competidores : []
-  const hasContent = benchmark?.posicion_relativa || benchmark?.brechas_clave?.length || competitors.length
+  const frontBenchmark = Array.isArray(data?.benchmark_por_frente) ? data.benchmark_por_frente : []
+  const hasContent = benchmark?.posicion_relativa || benchmark?.brechas_clave?.length || competitors.length || frontBenchmark.length
   if (!hasContent) return null
 
   return (
@@ -389,6 +404,24 @@ function BenchmarkPanel({ data }) {
               <li key={`brecha-${index}`} className="text-balance360-text text-xs leading-6">{index + 1}. {item}</li>
             ))}
           </ul>
+        </div>
+      )}
+
+      {frontBenchmark.length > 0 && (
+        <div className="rounded-xl border border-balance360-border bg-balance360-surface/50 p-4 mt-4">
+          <p className="text-balance360-muted text-[11px] uppercase tracking-wider mb-3">Delta por frente</p>
+          <div className="space-y-2">
+            {frontBenchmark.map((row) => (
+              <div key={row.frente} className="grid grid-cols-[1.2fr,0.9fr,0.9fr,0.7fr] gap-2 text-xs items-center">
+                <span className="text-balance360-text">{row.label}</span>
+                <span className="text-balance360-muted">Nosotros: {row.score_objetivo}</span>
+                <span className="text-balance360-muted">Competencia: {row.score_competencia}</span>
+                <span className={row.delta >= 0 ? 'text-balance360-success' : 'text-balance360-danger'}>
+                  {row.delta >= 0 ? `+${row.delta}` : row.delta}
+                </span>
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>
@@ -489,6 +522,10 @@ function OnboardingPanel({ form, loading, error, steps, onChange, onSubmit }) {
             <input className="balance360-input" value={form.primaryCompetitor} onChange={(event) => onChange('primaryCompetitor', event.target.value)} placeholder="Ej: BBVA" disabled={loading} />
           </div>
           <div>
+            <label className="block text-balance360-muted text-xs uppercase tracking-wider mb-2">Segundo competidor</label>
+            <input className="balance360-input" value={form.secondaryCompetitor} onChange={(event) => onChange('secondaryCompetitor', event.target.value)} placeholder="Ej: Interbank" disabled={loading} />
+          </div>
+          <div>
             <label className="block text-balance360-muted text-xs uppercase tracking-wider mb-2">Cargo</label>
             <input className="balance360-input" value={form.jobTitle} onChange={(event) => onChange('jobTitle', event.target.value)} placeholder="Ej: Director Digital" disabled={loading} />
           </div>
@@ -554,6 +591,13 @@ function Dashboard({ profile, workspace, companies, history, selectedCompanyId, 
               </select>
               <button className="balance360-btn whitespace-nowrap" onClick={() => selectedCompany && onAnalyze(selectedCompany)} disabled={!selectedCompany || loading}>
                 {loading ? 'Actualizando...' : 'Actualizar análisis'}
+              </button>
+              <button
+                className="balance360-btn balance360-btn-secondary whitespace-nowrap"
+                onClick={() => selectedCompany && onAnalyze(selectedCompany, { forceRefresh: true })}
+                disabled={!selectedCompany || loading}
+              >
+                Recalcular sin cache
               </button>
             </div>
             {selectedCompany && (
@@ -639,7 +683,7 @@ export default function App() {
   const [authError, setAuthError] = useState('')
   const [authMessage, setAuthMessage] = useState('')
 
-  const [onboardingForm, setOnboardingForm] = useState({ companyName: '', sector: '', primaryCompetitor: '', jobTitle: '' })
+  const [onboardingForm, setOnboardingForm] = useState({ companyName: '', sector: '', primaryCompetitor: '', secondaryCompetitor: '', jobTitle: '' })
   const [onboardingLoading, setOnboardingLoading] = useState(false)
   const [onboardingError, setOnboardingError] = useState('')
 
@@ -664,6 +708,7 @@ export default function App() {
         companyName: context.onboarding?.company_name || context.profile?.company_name || previous.companyName,
         sector: context.onboarding?.sector || previous.sector,
         primaryCompetitor: context.onboarding?.primary_competitor || previous.primaryCompetitor,
+        secondaryCompetitor: previous.secondaryCompetitor,
         jobTitle: context.profile?.job_title || previous.jobTitle
       }))
 
@@ -767,7 +812,7 @@ export default function App() {
     await balance.analyze(company)
   }
 
-  const handleDashboardAnalyze = async (company) => {
+  const handleDashboardAnalyze = async (company, options = {}) => {
     const accessToken = session?.access_token
     if (!accessToken) return
 
@@ -775,7 +820,8 @@ export default function App() {
       accessToken,
       workspaceId: workspace?.id,
       companyId: company.id,
-      requestType: 'single_audit'
+      requestType: 'single_audit',
+      forceRefresh: options.forceRefresh === true
     })
 
     if (session?.user?.id) await loadContext(session.user.id, session.access_token)
@@ -823,6 +869,7 @@ export default function App() {
         companyName: onboardingForm.companyName,
         sector: onboardingForm.sector,
         primaryCompetitor: onboardingForm.primaryCompetitor,
+        secondaryCompetitor: onboardingForm.secondaryCompetitor,
         jobTitle: onboardingForm.jobTitle
       })
 
