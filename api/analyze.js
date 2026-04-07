@@ -530,8 +530,13 @@ function buildFallbackAudit(company, signals, details = '', context = {}) {
   const competitors = (contextCompetitors.length ? contextCompetitors : fallbackCompetitors)
     .map((item) => ({
       name: normalizeText(item?.name),
-      score: normalizeScore(item?.score || item?.audit?.score || 0, 0),
-      fortaleza: normalizeText(item?.fortaleza, 'Fortaleza competitiva visible en presencia digital.'),
+      score: normalizeScore(
+        item?.score ??
+        item?.audit?.score ??
+        estimateScoreFromSignals(item?.signals),
+        0
+      ),
+      fortaleza: normalizeText(item?.fortaleza, 'Fortaleza competitiva observada en senales visibles por frente.'),
       brecha: normalizeText(item?.brecha, 'Brecha abierta en consistencia de experiencia y reputacion.')
     }))
     .filter((item) => item.name)
@@ -539,6 +544,8 @@ function buildFallbackAudit(company, signals, details = '', context = {}) {
   const competitorAverage = competitors.length
     ? Math.round(competitors.reduce((acc, item) => acc + (Number(item.score) || 0), 0) / competitors.length)
     : 0
+  const dynamicFrontScores = deriveFrontScoresFromSignals(signals)
+  const dynamicStrategy = buildDynamicStrategyBlocks(company, dynamicFrontScores)
   const frontDataQuality = buildFrontDataQuality(signals)
 
   const baseAudit = {
@@ -546,26 +553,14 @@ function buildFallbackAudit(company, signals, details = '', context = {}) {
     sector: 'General',
     mercado: normalizeText(context?.marketCountry, DEFAULT_MARKET_COUNTRY),
     score: baseScore,
-    resumen_ejecutivo: `${company} muestra seÃ±ales digitales visibles pero todavÃ­a fragmentadas. La prioridad es pasar de detecciÃ³n de presencia a ejecuciÃ³n consistente en adquisiciÃ³n, experiencia y reputaciÃ³n.`,
+    resumen_ejecutivo: dynamicStrategy.resumen_ejecutivo,
     voz_usuario: signals?.existenceLikely
       ? `BALANCE360 detecto evidencia publica inicial de ${company}. Esta lectura usa senales observables y debe tomarse como analisis operativo de contingencia.`
       : `BALANCE360 detecto evidencia publica limitada para ${company}. Mostramos una lectura de contingencia con trazas concretas de lo encontrado.`,
     gap_principal: 'Falta consolidar fuentes verificadas por frente y benchmarking competitivo para reemplazar este modo de contingencia por una lectura enriquecida completa.',
-    riesgos_clave: [
-      'Perder share of search y demanda incremental por baja consistencia de presencia cross-canal.',
-      'Deterioro de confianza por seÃ±ales de reputaciÃ³n no gestionadas de forma continua.',
-      'Decisiones de producto y marketing con evidencia incompleta frente a competidores.'
-    ],
-    palancas_crecimiento: [
-      'Orquestar narrativa Ãºnica entre web, app y canales sociales para mejorar conversiÃ³n.',
-      'Priorizar gestiÃ³n de reviews y respuesta pÃºblica para mover percepciÃ³n de servicio.',
-      'Optimizar rutas de autoservicio y onboarding en frentes con mayor fricciÃ³n visible.'
-    ],
-    quick_wins_30_dias: [
-      'Definir tablero semanal de seÃ±ales por frente con responsables y umbrales.',
-      'Corregir 3 fricciones de alto impacto en web/app detectadas en hallazgos.',
-      'Implementar protocolo de respuesta pÃºblica en reviews y redes con SLA operativo.'
-    ],
+    riesgos_clave: dynamicStrategy.riesgos_clave,
+    palancas_crecimiento: dynamicStrategy.palancas_crecimiento,
+    quick_wins_30_dias: dynamicStrategy.quick_wins_30_dias,
     benchmark_competitivo: {
       posicion_relativa: competitorAverage
         ? `${company} se ubica ${baseScore >= competitorAverage ? 'en paridad relativa' : 'por debajo'} frente al promedio de 2 competidores de referencia (${competitorAverage}/100).`
@@ -578,15 +573,8 @@ function buildFallbackAudit(company, signals, details = '', context = {}) {
       ]
     },
     benchmark_por_frente: computeFrontBenchmark(
-      {
-        app: { score: appStore || playStore ? 54 : 18 },
-        web: { score: signals?.web?.found ? 62 : 24 },
-        rrss: { score: socialProfiles.length ? Math.min(72, 30 + socialProfiles.length * 11) : 20 },
-        reviews: { score: signals?.reviews?.found ? 52 : 18 },
-        google_business: { score: signals?.google_business?.found ? 58 : 20 },
-        organic_mentions: { score: mentions ? Math.min(74, 24 + mentions * 6) : 16 }
-      },
-      (contextCompetitors.length ? contextCompetitors : []).filter((item) => item?.audit)
+      Object.fromEntries(Object.entries(dynamicFrontScores).map(([key, score]) => [key, { score }])),
+      (contextCompetitors.length ? contextCompetitors : []).filter((item) => item?.audit || item?.signals)
     ),
     pasos: [
       `Inicializando auditoria de ${company}`,
@@ -795,7 +783,11 @@ async function buildAnalysisContext({
   const competitors = []
   for (const item of baseCompetitors.slice(0, 2)) {
     const audit = await getCompetitorLatestAudit(supabase, item.slug)
-    competitors.push({ ...item, audit })
+    let signals = null
+    if (!audit) {
+      signals = await collectPublicSignals(item.name, { marketCountry })
+    }
+    competitors.push({ ...item, audit, signals })
   }
 
   if (!marketCountry) marketCountry = DEFAULT_MARKET_COUNTRY
@@ -829,6 +821,76 @@ const FRONT_CACHE_TTL_HOURS = {
   organic_mentions: 36
 }
 
+function deriveFrontScoresFromSignals(signals) {
+  const appFound = Boolean(signals?.app?.app_store || signals?.app?.play_store)
+  const webFound = Boolean(signals?.web?.found)
+  const rrssCount = Number(signals?.rrss?.count || 0)
+  const reviewsFound = Boolean(signals?.reviews?.found)
+  const gbFound = Boolean(signals?.google_business?.found)
+  const organicMentions = Number(signals?.organic_mentions?.mentionsCount || 0)
+
+  return {
+    app: appFound ? 54 : 18,
+    web: webFound ? 62 : 24,
+    rrss: rrssCount ? Math.min(72, 30 + rrssCount * 11) : 20,
+    reviews: reviewsFound ? 52 : 18,
+    google_business: gbFound ? 58 : 20,
+    organic_mentions: organicMentions ? Math.min(74, 24 + organicMentions * 6) : 16
+  }
+}
+
+function estimateScoreFromSignals(signals) {
+  const fronts = deriveFrontScoresFromSignals(signals)
+  const values = Object.values(fronts).filter((value) => Number.isFinite(value))
+  if (!values.length) return 0
+  return normalizeScore(Math.round(values.reduce((acc, value) => acc + value, 0) / values.length), 0)
+}
+
+function buildDynamicStrategyBlocks(company, frontScores) {
+  const rows = Object.entries(frontScores || {})
+    .map(([key, score]) => ({
+      key,
+      label: FRONT_LABELS[key] || key,
+      score: normalizeScore(score, 0)
+    }))
+    .sort((a, b) => a.score - b.score)
+
+  const weak = rows.slice(0, 3)
+  const medium = rows.slice(2, 5)
+
+  const weakLabels = weak.map((item) => item.label)
+  const weakText = weakLabels.length ? weakLabels.join(', ') : 'frentes criticos'
+
+  return {
+    resumen_ejecutivo: `${company} muestra presencia digital parcial. La prioridad operativa es fortalecer ${weakText} para cerrar brechas frente a competidores del mercado.`,
+    riesgos_clave: [
+      `Perder demanda incremental por debilidad en ${weak[0]?.label || 'frentes clave'}.`,
+      `Deterioro de confianza si no se estabilizan ${weak[1]?.label || 'senales reputacionales'}.`,
+      `Decisiones de producto con evidencia incompleta en ${weak[2]?.label || 'canales de interaccion'}.`
+    ],
+    palancas_crecimiento: [
+      `Priorizar mejoras de producto y UX en ${weak[0]?.label || 'frentes de mayor friccion'}.`,
+      `Conectar analitica operativa y respuesta publica en ${medium[0]?.label || 'reviews y reputacion'}.`,
+      `Ejecutar iteraciones semanales con metas de conversion en ${medium[1]?.label || 'web y app'}.`
+    ],
+    quick_wins_30_dias: [
+      `Corregir 3 fricciones visibles en ${weak[0]?.label || 'frente principal'} y medir impacto semanal.`,
+      `Implementar tablero de senales con SLA por frente (prioridad: ${weak[1]?.label || 'reputacion'}).`,
+      `Alinear mensajes y propuesta digital en ${weak[2]?.label || 'frentes de baja consistencia'}.`
+    ]
+  }
+}
+
+function getCompetitorFrontScore(competitor, key) {
+  const fromAudit = normalizeFrenteScore(competitor?.audit?.frentes?.[key])
+  if (fromAudit != null) return fromAudit
+  if (competitor?.signals) {
+    const fromSignals = deriveFrontScoresFromSignals(competitor.signals)[key]
+    return Number.isFinite(fromSignals) ? fromSignals : null
+  }
+  return null
+}
+
 function computeFrontBenchmark(targetFrentes, competitorsWithAudits) {
   const output = []
   for (const [key, label] of Object.entries(FRONT_LABELS)) {
@@ -838,7 +900,7 @@ function computeFrontBenchmark(targetFrentes, competitorsWithAudits) {
     const competitorScores = competitorsWithAudits
       .map((item) => ({
         name: item.name,
-        score: normalizeFrenteScore(item.audit?.frentes?.[key])
+        score: getCompetitorFrontScore(item, key)
       }))
       .filter((item) => item.score != null)
 
@@ -923,13 +985,16 @@ function pickKeyGap(targetFrentes, competitorFrentes, mode = 'competitor_advanta
 
 function buildCompetitiveNarrative(targetAudit, competitorsWithAudits) {
   const source = Array.isArray(competitorsWithAudits) ? competitorsWithAudits : []
-  const usable = source.filter((item) => item?.audit)
+  const usable = source.filter((item) => item?.audit || item?.signals)
   if (!usable.length) return null
 
   const cards = usable.slice(0, 2).map((item) => {
-    const compScore = normalizeScore(item.audit?.score, 0)
-    const best = pickKeyGap(targetAudit?.frentes, item.audit?.frentes, 'competitor_advantage')
-    const openGap = pickKeyGap(targetAudit?.frentes, item.audit?.frentes, 'target_advantage')
+    const derivedFrentes = item?.audit?.frentes || Object.fromEntries(
+      Object.entries(deriveFrontScoresFromSignals(item?.signals || {})).map(([key, score]) => [key, { score }])
+    )
+    const compScore = normalizeScore(item.audit?.score ?? estimateScoreFromSignals(item.signals), 0)
+    const best = pickKeyGap(targetAudit?.frentes, derivedFrentes, 'competitor_advantage')
+    const openGap = pickKeyGap(targetAudit?.frentes, derivedFrentes, 'target_advantage')
 
     const fortaleza = best
       ? best.delta > 0
@@ -1340,7 +1405,7 @@ async function handleRequest(req, res) {
             ? cachedReconciled.benchmark_competitivo.competidores
             : (analysisContext.competitors || []).map((item) => ({
               name: item.name,
-              score: normalizeScore(item.audit?.score, 0),
+              score: normalizeScore(item.audit?.score ?? estimateScoreFromSignals(item?.signals), 0),
               fortaleza: 'Fortaleza competitiva observada en senales publicas.',
               brecha: 'Brecha competitiva pendiente de cierre.'
             })).slice(0, 2))
@@ -1503,4 +1568,5 @@ export default async function handler(req, res) {
     }
   }
 }
+
 
