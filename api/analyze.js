@@ -379,6 +379,7 @@ function buildSystemPrompt(signals, context = {}) {
     competitorsLine,
     'No uses placeholders: evita "competidor 1/2", usa nombres reales de marcas.',
     'Si no tienes certeza, infiere con prudencia y deja constancia en hallazgos u oportunidades.',
+    'Incluye evaluacion de journeys por producto cuando aplique: apertura de cuenta corriente, solicitud de tarjeta, prestamo, pagos y reclamos/soporte.',
     'MantÃ©n el lenguaje ejecutivo, concreto y Ãºtil para product managers, directores digitales y CMOs.',
     'EVIDENCIA DISPONIBLE:',
     buildSignalsSummary(signals)
@@ -1033,12 +1034,12 @@ function buildDynamicStrategyBlocks(company, frontScores) {
     palancas_crecimiento: [
       `Priorizar mejoras de producto y UX en ${weak[0]?.label || 'frentes de mayor friccion'}.`,
       `Conectar analitica operativa y respuesta publica en ${medium[0]?.label || 'reviews y reputacion'}.`,
-      `Ejecutar iteraciones semanales con metas de conversion en ${medium[1]?.label || 'web y app'}.`
+      `Ejecutar iteraciones semanales en journeys criticos (apertura de cuenta corriente, tarjeta, prestamo y reclamos) con metas de conversion en ${medium[1]?.label || 'web y app'}.`
     ],
     quick_wins_30_dias: [
       `Corregir 3 fricciones visibles en ${weak[0]?.label || 'frente principal'} y medir impacto semanal.`,
       `Implementar tablero de senales con SLA por frente (prioridad: ${weak[1]?.label || 'reputacion'}).`,
-      `Alinear mensajes y propuesta digital en ${weak[2]?.label || 'frentes de baja consistencia'}.`
+      `Alinear mensajes y propuesta digital en ${weak[2]?.label || 'frentes de baja consistencia'} y testear aperturas de cuenta/pagos de punta a punta.`
     ]
   }
 }
