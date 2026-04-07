@@ -77,6 +77,17 @@ export function FrenteCard({ name, data }) {
   const label = FRENTE_LABELS[name] || name
   const icon = FRENTE_ICONS[name] || '.'
   const score = Number.isFinite(Number(data.score)) ? Number(data.score) : 0
+  const quality = data?.quality?.status || 'weak'
+  const qualityLabel = quality === 'strong'
+    ? 'Dato fuerte'
+    : quality === 'partial'
+      ? 'Dato parcial'
+      : 'Dato debil'
+  const qualityClass = quality === 'strong'
+    ? 'text-balance360-success border-balance360-success/30 bg-balance360-success/10'
+    : quality === 'partial'
+      ? 'text-balance360-warn border-balance360-warn/30 bg-balance360-warn/10'
+      : 'text-balance360-danger border-balance360-danger/30 bg-balance360-danger/10'
 
   return (
     <div className="frente-card animate-fade-in-up">
@@ -85,20 +96,25 @@ export function FrenteCard({ name, data }) {
           <span className="text-balance360-accent font-mono text-sm">{icon}</span>
           <span className="text-balance360-text font-medium text-sm">{label}</span>
         </div>
-        <span
-          className="font-mono text-base font-semibold"
-          style={{
-            color: score >= 75
-              ? '#00E676'
-              : score >= 50
-                ? '#00E5FF'
-                : score >= 30
-                  ? '#FFB347'
-                  : '#FF4757'
-          }}
-        >
-          {score}
-        </span>
+        <div className="flex flex-col items-end gap-1">
+          <span
+            className="font-mono text-base font-semibold"
+            style={{
+              color: score >= 75
+                ? '#00E676'
+                : score >= 50
+                  ? '#00E5FF'
+                  : score >= 30
+                    ? '#FFB347'
+                    : '#FF4757'
+            }}
+          >
+            {score}
+          </span>
+          <span className={`text-[10px] px-2 py-0.5 rounded-full border ${qualityClass}`}>
+            {qualityLabel}
+          </span>
+        </div>
       </div>
 
       <ScoreBar score={score} />

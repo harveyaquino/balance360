@@ -47,6 +47,9 @@ function normalizeResult(data) {
   const degraded = data.degraded === true
   const fallbackFinding = 'An no estamos leyendo fuentes verificadas para este frente, as que esta lectura sigue siendo preliminar.'
   const fallbackOpportunity = 'Conecta fuentes reales para convertir esta lectura inicial en un anlisis accionable.'
+  const qualityByFront = data?.front_data_quality && typeof data.front_data_quality === 'object'
+    ? data.front_data_quality
+    : {}
 
   const frentes = Object.fromEntries(
     Object.entries(data.frentes || {}).map(([key, frente]) => {
@@ -55,6 +58,14 @@ function normalizeResult(data) {
 
       return [key, {
         ...frente,
+        quality: {
+          status: ['strong', 'partial', 'weak'].includes(qualityByFront?.[key]?.status)
+            ? qualityByFront[key].status
+            : 'weak',
+          evidence_count: Number.isFinite(Number(qualityByFront?.[key]?.evidence_count))
+            ? Number(qualityByFront[key].evidence_count)
+            : 0
+        },
         hallazgos: hallazgos.length
           ? hallazgos.map((item) => cleanExecutiveText(item) || fallbackFinding)
           : [fallbackFinding],

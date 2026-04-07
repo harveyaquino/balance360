@@ -539,8 +539,9 @@ function buildFallbackAudit(company, signals, details = '', context = {}) {
   const competitorAverage = competitors.length
     ? Math.round(competitors.reduce((acc, item) => acc + (Number(item.score) || 0), 0) / competitors.length)
     : 0
+  const frontDataQuality = buildFrontDataQuality(signals)
 
-  return {
+  const baseAudit = {
     company,
     sector: 'General',
     mercado: normalizeText(context?.marketCountry, DEFAULT_MARKET_COUNTRY),
@@ -630,6 +631,16 @@ function buildFallbackAudit(company, signals, details = '', context = {}) {
         oportunidades: ['Monitorear share of voice, SEO de marca y menciones en medios y foros.']
       }
     }
+  }
+
+  const withRealBenchmark = buildCompetitiveNarrative(baseAudit, contextCompetitors)
+  return {
+    ...baseAudit,
+    ...(withRealBenchmark ? {
+      benchmark_competitivo: withRealBenchmark.benchmark_competitivo,
+      benchmark_por_frente: withRealBenchmark.benchmark_por_frente
+    } : {}),
+    front_data_quality: frontDataQuality
   }
 }
 function getSupabaseClient() {
@@ -800,18 +811,27 @@ function normalizeFrenteScore(front) {
   return Number.isFinite(score) ? Math.max(0, Math.min(100, Math.round(score))) : null
 }
 
-function computeFrontBenchmark(targetFrentes, competitorsWithAudits) {
-  const frontMap = {
-    app: 'App',
-    web: 'Web',
-    rrss: 'RRSS',
-    reviews: 'Reviews',
-    google_business: 'Google Business',
-    organic_mentions: 'Menciones organicas'
-  }
+const FRONT_LABELS = {
+  app: 'App',
+  web: 'Web',
+  rrss: 'RRSS',
+  reviews: 'Reviews',
+  google_business: 'Google Business',
+  organic_mentions: 'Menciones organicas'
+}
 
+const FRONT_CACHE_TTL_HOURS = {
+  app: 72,
+  web: 24,
+  rrss: 18,
+  reviews: 24,
+  google_business: 48,
+  organic_mentions: 36
+}
+
+function computeFrontBenchmark(targetFrentes, competitorsWithAudits) {
   const output = []
-  for (const [key, label] of Object.entries(frontMap)) {
+  for (const [key, label] of Object.entries(FRONT_LABELS)) {
     const target = normalizeFrenteScore(targetFrentes?.[key])
     if (target == null) continue
 
@@ -835,6 +855,152 @@ function computeFrontBenchmark(targetFrentes, competitorsWithAudits) {
   }
 
   return output
+}
+
+function buildFrontDataQuality(signals) {
+  const appEvidence = Number(Boolean(signals?.app?.app_store)) + Number(Boolean(signals?.app?.play_store))
+  const webEvidence = Number(Boolean(signals?.web?.found)) + Number(Boolean(signals?.web?.url))
+  const rrssEvidence = Number(signals?.rrss?.count || 0)
+  const reviewsEvidence =
+    Number(signals?.reviews?.sources?.app_store?.ratingCount || 0) +
+    Number(signals?.reviews?.sources?.play_store?.ratingCount || 0) +
+    Number(signals?.reviews?.sources?.maps?.ratingCount || 0)
+  const gbEvidence = Number(Boolean(signals?.google_business?.found)) + Number(Boolean(signals?.google_business?.place?.ratingCount))
+  const organicEvidence = Number(signals?.organic_mentions?.mentionsCount || 0)
+
+  const toStatus = (value, strongMin = 2, partialMin = 1) => {
+    if (value >= strongMin) return 'strong'
+    if (value >= partialMin) return 'partial'
+    return 'weak'
+  }
+
+  return {
+    app: {
+      status: toStatus(appEvidence, 2, 1),
+      evidence_count: appEvidence
+    },
+    web: {
+      status: toStatus(webEvidence, 2, 1),
+      evidence_count: webEvidence
+    },
+    rrss: {
+      status: toStatus(rrssEvidence, 2, 1),
+      evidence_count: rrssEvidence
+    },
+    reviews: {
+      status: toStatus(reviewsEvidence, 20, 1),
+      evidence_count: reviewsEvidence
+    },
+    google_business: {
+      status: toStatus(gbEvidence, 2, 1),
+      evidence_count: gbEvidence
+    },
+    organic_mentions: {
+      status: toStatus(organicEvidence, 5, 1),
+      evidence_count: organicEvidence
+    }
+  }
+}
+
+function pickKeyGap(targetFrentes, competitorFrentes, mode = 'competitor_advantage') {
+  const rows = Object.keys(FRONT_LABELS).map((key) => {
+    const target = normalizeFrenteScore(targetFrentes?.[key])
+    const competitor = normalizeFrenteScore(competitorFrentes?.[key])
+    if (target == null || competitor == null) return null
+    return {
+      key,
+      label: FRONT_LABELS[key],
+      delta: competitor - target
+    }
+  }).filter(Boolean)
+
+  if (!rows.length) return null
+  if (mode === 'competitor_advantage') {
+    return rows.sort((a, b) => b.delta - a.delta)[0]
+  }
+  return rows.sort((a, b) => a.delta - b.delta)[0]
+}
+
+function buildCompetitiveNarrative(targetAudit, competitorsWithAudits) {
+  const source = Array.isArray(competitorsWithAudits) ? competitorsWithAudits : []
+  const usable = source.filter((item) => item?.audit)
+  if (!usable.length) return null
+
+  const cards = usable.slice(0, 2).map((item) => {
+    const compScore = normalizeScore(item.audit?.score, 0)
+    const best = pickKeyGap(targetAudit?.frentes, item.audit?.frentes, 'competitor_advantage')
+    const openGap = pickKeyGap(targetAudit?.frentes, item.audit?.frentes, 'target_advantage')
+
+    const fortaleza = best
+      ? best.delta > 0
+        ? `Ventaja visible en ${best.label} (+${best.delta} vs nosotros).`
+        : `Paridad competitiva en ${best.label}.`
+      : 'Fortaleza competitiva visible en presencia digital.'
+
+    const brecha = openGap
+      ? openGap.delta < 0
+        ? `Brecha abierta para cerrar en ${openGap.label} (${openGap.delta}).`
+        : `Sin brechas fuertes detectadas por frente.`
+      : 'Brecha competitiva pendiente de cierre.'
+
+    return {
+      name: normalizeText(item.name || item.audit?.company),
+      score: compScore,
+      fortaleza,
+      brecha
+    }
+  }).filter((item) => item.name)
+
+  if (!cards.length) return null
+
+  const frontBenchmark = computeFrontBenchmark(targetAudit?.frentes, usable)
+  const avgCompetitor = Math.round(cards.reduce((acc, item) => acc + item.score, 0) / cards.length)
+  const ownScore = normalizeScore(targetAudit?.score, 0)
+  const posicion = ownScore >= avgCompetitor
+    ? `${targetAudit.company} se ubica en paridad o por encima del promedio competitivo (${avgCompetitor}/100).`
+    : `${targetAudit.company} se ubica por debajo del promedio de ${cards.length} competidores de referencia (${avgCompetitor}/100).`
+
+  const brechas = frontBenchmark
+    .filter((item) => item.delta < 0)
+    .sort((a, b) => a.delta - b.delta)
+    .slice(0, 3)
+    .map((item) => `Rezago en ${item.label}: ${item.delta} frente al promedio competitivo.`)
+
+  return {
+    benchmark_competitivo: {
+      posicion_relativa: posicion,
+      competidores: cards,
+      brechas_clave: brechas
+    },
+    benchmark_por_frente: frontBenchmark
+  }
+}
+
+function shouldRefreshCachedAuditByFront(cachedAudit, signals) {
+  if (!cachedAudit) return { refresh: false, reasons: [] }
+  if (!cachedAudit?.created_at) return { refresh: true, reasons: ['missing_created_at'] }
+
+  const createdAt = Date.parse(cachedAudit.created_at)
+  if (!Number.isFinite(createdAt)) return { refresh: true, reasons: ['invalid_created_at'] }
+
+  const ageHours = (Date.now() - createdAt) / 36e5
+  const activeFronts = {
+    app: Boolean(signals?.app?.app_store || signals?.app?.play_store),
+    web: Boolean(signals?.web?.found || signals?.web?.url),
+    rrss: Number(signals?.rrss?.count || 0) > 0,
+    reviews: Boolean(signals?.reviews?.found),
+    google_business: Boolean(signals?.google_business?.found),
+    organic_mentions: Number(signals?.organic_mentions?.mentionsCount || 0) > 0
+  }
+
+  const staleFronts = Object.entries(activeFronts)
+    .filter(([, active]) => active)
+    .map(([front]) => ({ front, ttl: FRONT_CACHE_TTL_HOURS[front] || 24 }))
+    .filter((item) => ageHours > item.ttl)
+    .map((item) => item.front)
+
+  if (!staleFronts.length) return { refresh: false, reasons: [] }
+  return { refresh: true, reasons: staleFronts }
 }
 
 function isLowQualityCachedAudit(audit) {
@@ -1145,26 +1311,41 @@ async function handleRequest(req, res) {
   })
 
   const cached = await getCachedAudit(supabase, company)
-  if (!forceRefresh && cached && !isLowQualityCachedAudit(cached)) {
+  const cacheFrontPolicy = shouldRefreshCachedAuditByFront(cached, publicSignals)
+  const cacheBypassReasons = forceRefresh
+    ? ['force_refresh']
+    : (cacheFrontPolicy.refresh ? cacheFrontPolicy.reasons : [])
+  if (!forceRefresh && cached && !isLowQualityCachedAudit(cached) && !cacheFrontPolicy.refresh) {
     const cachedNormalized = normalizeAuditResult(cached, company)
     const cachedReconciled = reconcileAuditWithSignals(cachedNormalized, publicSignals)
+    const qualityByFront = buildFrontDataQuality(publicSignals)
+    const realCompetitive = buildCompetitiveNarrative(
+      cachedReconciled,
+      (analysisContext.competitors || []).filter((item) => item?.audit)
+    )
     const cachedWithContext = {
       ...cachedReconciled,
       mercado: cachedReconciled.mercado || analysisContext.marketCountry,
-      benchmark_por_frente: cachedReconciled.benchmark_por_frente?.length
-        ? cachedReconciled.benchmark_por_frente
-        : computeFrontBenchmark(cachedReconciled.frentes, (analysisContext.competitors || []).filter((item) => item?.audit)),
+      benchmark_por_frente: realCompetitive?.benchmark_por_frente?.length
+        ? realCompetitive.benchmark_por_frente
+        : (cachedReconciled.benchmark_por_frente?.length
+          ? cachedReconciled.benchmark_por_frente
+          : computeFrontBenchmark(cachedReconciled.frentes, (analysisContext.competitors || []).filter((item) => item?.audit))),
       benchmark_competitivo: {
         ...(cachedReconciled.benchmark_competitivo || {}),
-        competidores: cachedReconciled.benchmark_competitivo?.competidores?.length
-          ? cachedReconciled.benchmark_competitivo.competidores
-          : (analysisContext.competitors || []).map((item) => ({
-            name: item.name,
-            score: normalizeScore(item.audit?.score, 0),
-            fortaleza: 'Fortaleza competitiva observada en seÃ±ales publicas.',
-            brecha: 'Brecha competitiva pendiente de cierre.'
-          })).slice(0, 2)
-      }
+        ...(realCompetitive?.benchmark_competitivo || {}),
+        competidores: realCompetitive?.benchmark_competitivo?.competidores?.length
+          ? realCompetitive.benchmark_competitivo.competidores
+          : (cachedReconciled.benchmark_competitivo?.competidores?.length
+            ? cachedReconciled.benchmark_competitivo.competidores
+            : (analysisContext.competitors || []).map((item) => ({
+              name: item.name,
+              score: normalizeScore(item.audit?.score, 0),
+              fortaleza: 'Fortaleza competitiva observada en senales publicas.',
+              brecha: 'Brecha competitiva pendiente de cierre.'
+            })).slice(0, 2))
+      },
+      front_data_quality: qualityByFront
     }
     let auditId = cached.id
 
@@ -1195,6 +1376,10 @@ async function handleRequest(req, res) {
       ...cachedWithContext,
       audit_id: auditId,
       from_cache: true,
+      cache_policy: {
+        mode: 'cache_hit',
+        refreshed_due_to_fronts: []
+      },
       signal_confidence: publicSignals.confidenceScore,
       signals_evidence: publicSignals.evidence,
       data_quality: publicSignals.existenceLikely ? 'verified_signals' : 'weak_signals'
@@ -1220,6 +1405,10 @@ async function handleRequest(req, res) {
       ...fallback,
       audit_id: savedFallback?.id || null,
       from_cache: false,
+      cache_policy: {
+        mode: 'cache_bypass',
+        refreshed_due_to_fronts: cacheBypassReasons
+      },
       degraded: true,
       signal_confidence: publicSignals.confidenceScore,
       signals_evidence: publicSignals.evidence,
@@ -1230,20 +1419,37 @@ async function handleRequest(req, res) {
   try {
     const normalized = await requestAnthropicAnalysis(apiKey, company, publicSignals, analysisContext)
     const reconciled = reconcileAuditWithSignals(normalized, publicSignals)
-    const savedAudit = await saveAudit(supabase, reconciled, authUser?.id || null)
+    const qualityByFront = buildFrontDataQuality(publicSignals)
+    const realCompetitive = buildCompetitiveNarrative(
+      reconciled,
+      (analysisContext.competitors || []).filter((item) => item?.audit)
+    )
+    const enriched = {
+      ...reconciled,
+      ...(realCompetitive ? {
+        benchmark_competitivo: realCompetitive.benchmark_competitivo,
+        benchmark_por_frente: realCompetitive.benchmark_por_frente
+      } : {}),
+      front_data_quality: qualityByFront
+    }
+    const savedAudit = await saveAudit(supabase, enriched, authUser?.id || null)
 
     await updateAnalysisRequest(supabase, analysisRequest?.id, {
       status: 'completed',
       result_audit_id: savedAudit?.id || null,
-      sector: reconciled.sector,
+      sector: enriched.sector,
       completed_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
     })
 
     return res.status(200).json(normalizeDeepStrings({
-      ...reconciled,
+      ...enriched,
       audit_id: savedAudit?.id || null,
       from_cache: false,
+      cache_policy: {
+        mode: 'cache_bypass',
+        refreshed_due_to_fronts: cacheBypassReasons
+      },
       signal_confidence: publicSignals.confidenceScore,
       signals_evidence: publicSignals.evidence,
       data_quality: publicSignals.existenceLikely ? 'verified_signals' : 'weak_signals'
@@ -1266,6 +1472,10 @@ async function handleRequest(req, res) {
       ...fallback,
       audit_id: savedFallback?.id || null,
       from_cache: false,
+      cache_policy: {
+        mode: 'cache_bypass',
+        refreshed_due_to_fronts: cacheBypassReasons
+      },
       degraded: true,
       signal_confidence: publicSignals.confidenceScore,
       signals_evidence: publicSignals.evidence,
