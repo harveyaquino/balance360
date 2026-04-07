@@ -388,7 +388,34 @@ function inferFallbackCompetitors(company, marketCountry = DEFAULT_MARKET_COUNTR
   const key = String(company || '').toLowerCase()
   const market = String(marketCountry || '').toLowerCase()
   const isBanking = /scotiabank|bbva|interbank|bcp|banco|banbif|pichincha/.test(key)
+  const isWalletOrFintech = /yape|plin|tunki|bim|fintech|billetera|wallet|pagos?/.test(key)
   const isTelco = /claro|movistar|entel|wom|bitel|telco|telecom/.test(key)
+
+  if (isWalletOrFintech) {
+    if (market.includes('peru')) {
+      if (/yape/.test(key)) {
+        return [
+          { name: 'Plin', score: 62, fortaleza: 'Mayor interoperabilidad bancaria en pagos P2P y comercio.', brecha: 'Consistencia de experiencia en onboarding y soporte en picos de demanda.' },
+          { name: 'Tunki', score: 55, fortaleza: 'Propuesta simple para pagos y transferencia de bajo esfuerzo.', brecha: 'Alcance de ecosistema y recordacion de marca frente a lideres.' }
+        ]
+      }
+      if (/plin/.test(key)) {
+        return [
+          { name: 'Yape', score: 68, fortaleza: 'Mayor traccion de uso diario y presencia digital de marca.', brecha: 'Gestion de percepcion en soporte y fricciones operativas visibles.' },
+          { name: 'Tunki', score: 55, fortaleza: 'Experiencia de uso sencilla para transacciones frecuentes.', brecha: 'Cobertura y adopcion comercial menor frente a lideres.' }
+        ]
+      }
+      return [
+        { name: 'Yape', score: 68, fortaleza: 'Mayor adopcion y recordacion en pagos digitales de consumo masivo.', brecha: 'Saturacion operativa y fricciones de soporte en momentos de alta demanda.' },
+        { name: 'Plin', score: 62, fortaleza: 'Integracion con banca tradicional y buena cobertura de usuarios bancarizados.', brecha: 'Diferenciacion de experiencia frente a super-apps de pagos.' }
+      ]
+    }
+
+    return [
+      { name: 'Mercado Pago', score: 66, fortaleza: 'Ecosistema robusto de pagos y comercio digital.', brecha: 'Experiencia de soporte y confianza segun segmento.' },
+      { name: 'PayPal', score: 60, fortaleza: 'Marca global con alto reconocimiento para pagos digitales.', brecha: 'Adecuacion local y propuesta de valor en mercado domestico.' }
+    ]
+  }
 
   if (isBanking) {
     if (market.includes('peru')) {
