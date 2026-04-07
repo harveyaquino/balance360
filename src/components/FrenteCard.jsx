@@ -1,26 +1,35 @@
-import DOMPurify from 'dompurify'
+﻿import DOMPurify from 'dompurify'
 
 const FRENTE_LABELS = {
-  app: 'App móvil',
+  app: 'App movil',
   web: 'Web',
   rrss: 'Redes sociales',
   reviews: 'Reviews',
   google_business: 'Google Business',
-  organic_mentions: 'Menciones orgánicas'
+  organic_mentions: 'Menciones organicas'
 }
 
 const FRENTE_ICONS = {
-  app: '◈',
-  web: '◉',
-  rrss: '◎',
-  reviews: '◆',
-  google_business: '◇',
-  organic_mentions: '◌'
+  app: '*',
+  web: 'o',
+  rrss: '@',
+  reviews: '+',
+  google_business: '#',
+  organic_mentions: '~'
+}
+
+function fixMojibake(value) {
+  const text = String(value || '')
+  try {
+    return decodeURIComponent(escape(text))
+  } catch {
+    return text
+  }
 }
 
 function sanitizeInsight(text) {
-  const cleaned = String(text || '')
-    .replace(/Anthropic\s+\d{3}:[\s\S]*/i, 'La fuente analítica todavía no está conectada a datos observables de este frente.')
+  const cleaned = fixMojibake(String(text || ''))
+    .replace(/Anthropic\s+\d{3}:[\s\S]*/i, 'La fuente analitica todavia no esta conectada a datos observables de este frente.')
     .replace(/\s+/g, ' ')
     .trim()
 
@@ -55,7 +64,7 @@ function InsightList({ title, items, tone }) {
       <ul className="space-y-2">
         {items.map((item, index) => (
           <li key={index} className={`text-xs leading-5 flex gap-2 ${tone}`}>
-            <span className="mt-0.5 shrink-0">{title === 'Oportunidades' ? '+' : '—'}</span>
+            <span className="mt-0.5 shrink-0">{title === 'Oportunidades' ? '+' : '-'}</span>
             <span>{sanitizeInsight(item)}</span>
           </li>
         ))}
@@ -66,7 +75,7 @@ function InsightList({ title, items, tone }) {
 
 export function FrenteCard({ name, data }) {
   const label = FRENTE_LABELS[name] || name
-  const icon = FRENTE_ICONS[name] || '•'
+  const icon = FRENTE_ICONS[name] || '.'
   const score = Number.isFinite(Number(data.score)) ? Number(data.score) : 0
 
   return (

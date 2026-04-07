@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+﻿import { useCallback, useState } from 'react'
 
 const MAX_LEN = 120
 const INJECTION_RE = /ignore\s+(previous|above|all)\s+instructions|system\s*prompt|<\s*script|javascript:/i
@@ -27,17 +27,17 @@ export function useBalance360() {
 
     const clean = sanitizeClient(rawInput)
     if (!clean) {
-      setError('Nombre de empresa inválido. Usa entre 2 y 120 caracteres.')
+      setError('Nombre de empresa invalido. Usa entre 2 y 120 caracteres.')
       setStatus('error')
       return null
     }
 
     const fakeSteps = [
       options.forceRefresh
-        ? `Forzando recálculo sin cache para "${clean}"...`
+        ? `Forzando recalculo sin cache para "${clean}"...`
         : `Consultando cache para "${clean}"...`,
-      'Buscando señales públicas del producto...',
-      'Agrupando señales por frente...',
+      'Buscando senales publicas del producto...',
+      'Agrupando senales por frente...',
       'Preparando lectura ejecutiva...',
       'Calculando BALANCE Score...'
     ]
@@ -71,21 +71,21 @@ export function useBalance360() {
       clearInterval(timer)
 
       if (response.status === 429) {
-        setError('Límite de consultas alcanzado. Intenta nuevamente en 60 segundos.')
+        setError('Limite de consultas alcanzado. Intenta nuevamente en 60 segundos.')
         setStatus('error')
         return null
       }
 
       if (response.status === 403) {
         const body = await response.json().catch(() => ({}))
-        setError(body.error || 'Tu plan actual no permite más análisis en este período.')
+        setError(body.error || 'Tu plan actual no permite mas analisis en este periodo.')
         setStatus('error')
         return null
       }
 
       if (!response.ok) {
         const body = await response.json().catch(() => ({}))
-        setError(body.error || 'No pudimos completar el análisis. Intenta de nuevo.')
+        setError(body.error || 'No pudimos completar el analisis. Intenta de nuevo.')
         setStatus('error')
         return null
       }
@@ -98,7 +98,7 @@ export function useBalance360() {
       return result
     } catch {
       clearInterval(timer)
-      setError('Error de conexión. Verifica tu red e intenta nuevamente.')
+      setError('Error de conexion. Verifica tu red e intenta nuevamente.')
       setStatus('error')
       return null
     }

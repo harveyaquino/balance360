@@ -1,4 +1,4 @@
-import DOMPurify from 'dompurify'
+﻿import DOMPurify from 'dompurify'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useBalance360 } from './hooks/useBalance360'
 import { ScoreRing } from './components/ScoreRing'
@@ -28,7 +28,7 @@ function formatDate(value) {
 function cleanExecutiveText(text) {
   return safeText(
     String(text || '')
-      .replace(/Anthropic\s+\d{3}:[\s\S]*/i, 'Fuente analítica temporalmente no disponible.')
+      .replace(/Anthropic\s+\d{3}:[\s\S]*/i, 'Fuente analtica temporalmente no disponible.')
       .replace(/\(\s*\)/g, '')
       .replace(/\(\s*$/g, '')
       .replace(/\s+/g, ' ')
@@ -45,8 +45,8 @@ function normalizeResult(data) {
   if (!data) return null
 
   const degraded = data.degraded === true
-  const fallbackFinding = 'Aún no estamos leyendo fuentes verificadas para este frente, así que esta lectura sigue siendo preliminar.'
-  const fallbackOpportunity = 'Conecta fuentes reales para convertir esta lectura inicial en un análisis accionable.'
+  const fallbackFinding = 'An no estamos leyendo fuentes verificadas para este frente, as que esta lectura sigue siendo preliminar.'
+  const fallbackOpportunity = 'Conecta fuentes reales para convertir esta lectura inicial en un anlisis accionable.'
 
   const frentes = Object.fromEntries(
     Object.entries(data.frentes || {}).map(([key, frente]) => {
@@ -118,7 +118,7 @@ function Header({ session, workspaceName, onSignOut }) {
         </div>
         <div>
           <h1 className="text-balance360-text font-semibold text-sm tracking-wide">BALANCE360</h1>
-          <p className="text-balance360-muted text-xs">360° Digital Intelligence</p>
+          <p className="text-balance360-muted text-xs">360 Digital Intelligence</p>
         </div>
       </div>
 
@@ -137,7 +137,7 @@ function Header({ session, workspaceName, onSignOut }) {
             onClick={onSignOut}
             className="text-balance360-muted text-xs hover:text-balance360-accent transition-colors"
           >
-            Cerrar sesión
+            Cerrar sesin
           </button>
         ) : (
           <a
@@ -166,17 +166,17 @@ function Hero({ onAnalyze, loading }) {
     <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
       <div className="mb-4">
         <span className="inline-flex items-center rounded-full border border-balance360-accent/20 bg-balance360-accent/10 px-3 py-1 text-balance360-accent font-mono text-[11px] uppercase tracking-[0.22em]">
-          VeyharCorp · Inteligencia competitiva digital
+          VeyharCorp  Inteligencia competitiva digital
         </span>
       </div>
       <h2 className="text-3xl md:text-5xl font-semibold text-balance360-text mb-4 leading-tight max-w-3xl">
-        Entiende cómo se percibe tu
+        Entiende cmo se percibe tu
         <br />
         <span className="text-balance360-accent">producto digital</span>
       </h2>
       <p className="text-balance360-muted text-base max-w-2xl mb-10 leading-8">
-        BALANCE360 resume la percepción pública de una empresa en apps, web, reviews,
-        redes sociales, Google Business y menciones orgánicas para darte una lectura ejecutiva.
+        BALANCE360 resume la percepcin pblica de una empresa en apps, web, reviews,
+        redes sociales, Google Business y menciones orgnicas para darte una lectura ejecutiva.
       </p>
       <form onSubmit={handleSubmit} className="w-full max-w-xl flex flex-col sm:flex-row gap-3">
         <input
@@ -199,7 +199,7 @@ function Hero({ onAnalyze, loading }) {
         </button>
       </form>
       <p className="text-balance360-muted text-xs mt-4">
-        Bancos · Retail · Telco · Seguros · FinTech
+        Bancos  Retail  Telco  Seguros  FinTech
       </p>
     </div>
   )
@@ -214,8 +214,8 @@ function ResultBanner({ degraded }) {
         Lectura preliminar
       </p>
       <p className="text-balance360-text text-sm leading-6">
-        Este resultado es una aproximación ejecutiva basada en señales públicas abiertas.
-        Estamos conectando fuentes verificadas adicionales por frente para consolidar precisión de nivel enterprise.
+        Este resultado es una aproximacin ejecutiva basada en seales pblicas abiertas.
+        Estamos conectando fuentes verificadas adicionales por frente para consolidar precisin de nivel enterprise.
       </p>
     </div>
   )
@@ -253,7 +253,7 @@ function EvidencePanel({ data }) {
       <div className="flex items-center justify-between gap-4 mb-4 flex-wrap">
         <p className="text-balance360-text text-sm font-semibold">Fuentes detectadas</p>
         <span className="balance360-tag text-balance360-accent">
-          confianza señales {Number(data.signal_confidence || 0)}/100
+          confianza seales {Number(data.signal_confidence || 0)}/100
         </span>
       </div>
 
@@ -277,7 +277,7 @@ function EvidencePanel({ data }) {
         </div>
 
         <div className="balance360-surface-card">
-          <p className="text-balance360-muted text-[11px] uppercase tracking-wider mb-1">Menciones orgánicas</p>
+          <p className="text-balance360-muted text-[11px] uppercase tracking-wider mb-1">Menciones orgnicas</p>
           <p className="text-balance360-text text-sm">{organicCount} resultados filtrados</p>
         </div>
       </div>
@@ -309,7 +309,7 @@ function ResultSummary({ data, fromCache }) {
           </div>
           <h2 className="text-3xl font-semibold text-balance360-text mb-3">{safeText(data.company)}</h2>
           <p className="text-balance360-muted text-sm leading-7 mb-4 max-w-2xl">
-            {data.voz_usuario || `BALANCE360 preparó una lectura inicial del estado digital de ${safeText(data.company)}.`}
+            {data.voz_usuario || `BALANCE360 prepar una lectura inicial del estado digital de ${safeText(data.company)}.`}
           </p>
           {data.gap_principal && (
             <div className="rounded-xl border border-balance360-danger/20 bg-balance360-danger/10 p-4">
@@ -332,7 +332,7 @@ function StrategyPanel({ data }) {
   const blocks = [
     { title: 'Riesgos clave', items: data.riesgos_clave, tone: 'text-balance360-danger' },
     { title: 'Palancas de crecimiento', items: data.palancas_crecimiento, tone: 'text-balance360-accent' },
-    { title: 'Quick wins (30 días)', items: data.quick_wins_30_dias, tone: 'text-balance360-success' }
+    { title: 'Quick wins (30 das)', items: data.quick_wins_30_dias, tone: 'text-balance360-success' }
   ]
 
   return (
@@ -376,7 +376,7 @@ function BenchmarkPanel({ data }) {
     <div className="balance360-card p-6 mb-6">
       <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
         <p className="text-balance360-text text-sm font-semibold">Benchmark competitivo (2 competidores)</p>
-        <span className="balance360-tag text-balance360-accent">comparativo estratégico</span>
+        <span className="balance360-tag text-balance360-accent">comparativo estratgico</span>
       </div>
 
       {benchmark.posicion_relativa && (
@@ -457,7 +457,7 @@ function AuthPanel({ mode, form, loading, error, message, onModeChange, onChange
     <div className="balance360-card p-6 w-full max-w-md">
       <div className="flex gap-2 mb-6">
         <button onClick={() => onModeChange('signin')} className={`balance360-chip ${mode === 'signin' ? 'balance360-chip-active' : ''}`}>
-          Iniciar sesión
+          Iniciar sesin
         </button>
         <button onClick={() => onModeChange('signup')} className={`balance360-chip ${mode === 'signup' ? 'balance360-chip-active' : ''}`}>
           Crear cuenta
@@ -469,8 +469,8 @@ function AuthPanel({ mode, form, loading, error, message, onModeChange, onChange
       </h3>
       <p className="text-balance360-muted text-sm mb-5 leading-6">
         {mode === 'signup'
-          ? 'Regístrate para crear tu workspace, configurar tu empresa y lanzar el primer análisis.'
-          : 'Usa tu cuenta para continuar con onboarding, historial y análisis persistentes.'}
+          ? 'Regstrate para crear tu workspace, configurar tu empresa y lanzar el primer anlisis.'
+          : 'Usa tu cuenta para continuar con onboarding, historial y anlisis persistentes.'}
       </p>
 
       <form className="space-y-3" onSubmit={onSubmit}>
@@ -481,7 +481,7 @@ function AuthPanel({ mode, form, loading, error, message, onModeChange, onChange
           </>
         )}
         <input type="email" className="balance360-input" placeholder="Correo corporativo" value={form.email} onChange={(event) => onChange('email', event.target.value)} disabled={loading} />
-        <input type="password" className="balance360-input" placeholder="Contraseña" value={form.password} onChange={(event) => onChange('password', event.target.value)} disabled={loading} />
+        <input type="password" className="balance360-input" placeholder="Contrasea" value={form.password} onChange={(event) => onChange('password', event.target.value)} disabled={loading} />
         <button type="submit" className="balance360-btn w-full" disabled={loading}>
           {loading ? 'Procesando...' : mode === 'signup' ? 'Crear cuenta' : 'Entrar'}
         </button>
@@ -501,7 +501,7 @@ function OnboardingPanel({ form, loading, error, steps, onChange, onSubmit }) {
           Onboarding guiado
         </p>
         <h2 className="text-3xl font-semibold text-balance360-text mb-3">
-          Configura tu primer análisis
+          Configura tu primer anlisis
         </h2>
         <p className="text-balance360-muted text-sm mb-6 leading-7">
           Indica la empresa que quieres seguir, el sector en el que compite y su rival principal.
@@ -530,7 +530,7 @@ function OnboardingPanel({ form, loading, error, steps, onChange, onSubmit }) {
             <input className="balance360-input" value={form.jobTitle} onChange={(event) => onChange('jobTitle', event.target.value)} placeholder="Ej: Director Digital" disabled={loading} />
           </div>
           <button type="submit" className="balance360-btn w-full" disabled={loading}>
-            {loading ? 'Preparando onboarding...' : 'Crear contexto y lanzar primer análisis'}
+            {loading ? 'Preparando onboarding...' : 'Crear contexto y lanzar primer anlisis'}
           </button>
         </form>
 
@@ -539,11 +539,11 @@ function OnboardingPanel({ form, loading, error, steps, onChange, onSubmit }) {
 
       <div className="space-y-6">
         <div className="balance360-card p-6">
-          <h3 className="text-balance360-text font-semibold mb-3">Qué activaremos</h3>
+          <h3 className="text-balance360-text font-semibold mb-3">Qu activaremos</h3>
           <ul className="space-y-3 text-sm text-balance360-muted leading-6">
             <li>1. Crear la empresa principal dentro de tu workspace.</li>
             <li>2. Registrar el competidor base para benchmark.</li>
-            <li>3. Guardar el primer análisis en historial.</li>
+            <li>3. Guardar el primer anlisis en historial.</li>
           </ul>
         </div>
         <AgentSteps steps={steps} loading={loading} />
@@ -566,7 +566,7 @@ function Dashboard({ profile, workspace, companies, history, selectedCompanyId, 
           <p className="text-balance360-muted text-sm mb-6 leading-7">
             Tienes el plan <span className="text-balance360-text font-semibold uppercase">{safeText(profile?.plan)}</span> y has usado{' '}
             <span className="text-balance360-text font-semibold">{profile?.queries_used ?? 0}</span> de{' '}
-            <span className="text-balance360-text font-semibold">{profile?.queries_limit ?? 0}</span> análisis en este período.
+            <span className="text-balance360-text font-semibold">{profile?.queries_limit ?? 0}</span> anlisis en este perodo.
           </p>
 
           <div className="grid sm:grid-cols-2 gap-4 mb-6">
@@ -575,7 +575,7 @@ function Dashboard({ profile, workspace, companies, history, selectedCompanyId, 
               <p className="text-balance360-text font-semibold">{safeText(workspace?.name || 'Sin nombre')}</p>
             </div>
             <div className="balance360-surface-card">
-              <p className="text-balance360-muted text-xs uppercase tracking-wider mb-1">Próximo reset</p>
+              <p className="text-balance360-muted text-xs uppercase tracking-wider mb-1">Prximo reset</p>
               <p className="text-balance360-text font-semibold">{formatDate(profile?.reset_at)}</p>
             </div>
           </div>
@@ -584,13 +584,13 @@ function Dashboard({ profile, workspace, companies, history, selectedCompanyId, 
             <label className="block text-balance360-muted text-xs uppercase tracking-wider">Empresa activa</label>
             <div className="flex flex-col md:flex-row gap-3">
               <select className="balance360-input" value={selectedCompanyId || ''} onChange={(event) => onCompanyChange(event.target.value)} disabled={!companies.length || loading}>
-                {companies.length === 0 && <option value="">No hay empresas aún</option>}
+                {companies.length === 0 && <option value="">No hay empresas an</option>}
                 {companies.map((company) => (
                   <option key={company.id} value={company.id}>{company.name}</option>
                 ))}
               </select>
               <button className="balance360-btn whitespace-nowrap" onClick={() => selectedCompany && onAnalyze(selectedCompany)} disabled={!selectedCompany || loading}>
-                {loading ? 'Actualizando...' : 'Actualizar análisis'}
+                {loading ? 'Actualizando...' : 'Actualizar anlisis'}
               </button>
               <button
                 className="balance360-btn balance360-btn-secondary whitespace-nowrap"
@@ -602,7 +602,7 @@ function Dashboard({ profile, workspace, companies, history, selectedCompanyId, 
             </div>
             {selectedCompany && (
               <p className="text-balance360-muted text-sm">
-                Sector: {safeText(selectedCompany.sector || 'Sin sector')} · slug: {safeText(selectedCompany.slug)}
+                Sector: {safeText(selectedCompany.sector || 'Sin sector')}  slug: {safeText(selectedCompany.slug)}
               </p>
             )}
           </div>
@@ -613,7 +613,7 @@ function Dashboard({ profile, workspace, companies, history, selectedCompanyId, 
           <div className="space-y-3">
             {history.length === 0 && (
               <p className="text-balance360-muted text-sm leading-6">
-                Todavía no hay auditorías guardadas para este usuario.
+                Todava no hay auditoras guardadas para este usuario.
               </p>
             )}
             {history.map((item) => (
@@ -623,7 +623,7 @@ function Dashboard({ profile, workspace, companies, history, selectedCompanyId, 
                   <span className="text-balance360-accent font-mono text-sm">{item.score}</span>
                 </div>
                 <p className="text-balance360-muted text-xs">
-                  {safeText(item.sector || 'Sin sector')} · {formatDate(item.created_at)}
+                  {safeText(item.sector || 'Sin sector')}  {formatDate(item.created_at)}
                 </p>
               </div>
             ))}
@@ -657,10 +657,10 @@ function MessageCard({ children }) {
 function normalizeOnboardingError(error) {
   const message = String(error?.message || error || '').toLowerCase()
   if (message.includes('stack depth limit exceeded')) {
-    return 'Detectamos una configuración pendiente en base de datos (RLS). Ejecuta la migración de fix y vuelve a intentar.'
+    return 'Detectamos una configuracin pendiente en base de datos (RLS). Ejecuta la migracin de fix y vuelve a intentar.'
   }
   if (message.includes('row-level security') || message.includes('onboarding_states')) {
-    return 'Tu base de datos bloqueó el insert de onboarding por política RLS. Ejecuta la migración de onboarding y vuelve a intentar.'
+    return 'Tu base de datos bloque el insert de onboarding por poltica RLS. Ejecuta la migracin de onboarding y vuelve a intentar.'
   }
   return error?.message || 'No fue posible completar el onboarding.'
 }
@@ -784,7 +784,7 @@ export default function App() {
         if (error) throw error
 
         if (!data.session) {
-          setAuthMessage('Te enviamos un correo de verificación. Confirma tu email para entrar.')
+          setAuthMessage('Te enviamos un correo de verificacin. Confirma tu email para entrar.')
         } else {
           setAuthMessage('Cuenta creada correctamente. Estamos preparando tu workspace.')
         }
@@ -797,7 +797,7 @@ export default function App() {
         if (error) throw error
       }
     } catch (error) {
-      setAuthError(error.message || 'No fue posible completar la autenticación.')
+      setAuthError(error.message || 'No fue posible completar la autenticacin.')
     } finally {
       setAuthLoading(false)
     }
@@ -835,7 +835,7 @@ export default function App() {
     event.preventDefault()
 
     if (!session?.user) {
-      setOnboardingError('No encontramos sesión activa para este usuario.')
+      setOnboardingError('No encontramos sesin activa para este usuario.')
       return
     }
 
@@ -881,7 +881,7 @@ export default function App() {
       })
 
       if (!result?.audit_id) {
-        throw new Error('El análisis inicial no devolvió un audit_id persistente.')
+        throw new Error('El anlisis inicial no devolvi un audit_id persistente.')
       }
 
       await finalizeOnboarding({
@@ -907,7 +907,7 @@ export default function App() {
       <Header session={session} workspaceName={workspaceName} onSignOut={handleSignOut} />
 
       <main className="flex-1">
-        {booting && <LoadingScreen label="Inicializando sesión y contexto de datos..." />}
+        {booting && <LoadingScreen label="Inicializando sesin y contexto de datos..." />}
 
         {!booting && !session && (
           <>
@@ -1009,9 +1009,10 @@ export default function App() {
           >
             Harvey Aquino
           </a>
-          {' '}· VeyharCorp · BALANCE360 v0.3.0
+          {' '} VeyharCorp  BALANCE360 v0.3.0
         </p>
       </footer>
     </div>
   )
 }
+
