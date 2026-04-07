@@ -1,17 +1,37 @@
 import { createClient } from '@supabase/supabase-js'
 
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || ''
+const STRICT_CORS = process.env.STRICT_CORS === 'true'
+const ALLOWED_ORIGINS = ALLOWED_ORIGIN
+  .split(',')
+  .map((item) => item.trim())
+  .filter(Boolean)
 
 function corsHeaders(origin) {
   const isDev = process.env.NODE_ENV === 'development'
-  const allowed = !ALLOWED_ORIGIN || origin === ALLOWED_ORIGIN || isDev
+  const allowAnyInDev = isDev && !ALLOWED_ORIGINS.length
+  const allowAnyByConfig = !STRICT_CORS && !ALLOWED_ORIGINS.length
+  const normalizedOrigin = String(origin || '').trim()
+  const allowed = allowAnyInDev || allowAnyByConfig || ALLOWED_ORIGINS.includes(normalizedOrigin)
+  const resolvedOrigin = allowed
+    ? (normalizedOrigin || ((allowAnyInDev || allowAnyByConfig) ? '*' : ALLOWED_ORIGINS[0] || ''))
+    : (ALLOWED_ORIGINS[0] || '')
 
   return {
-    'Access-Control-Allow-Origin': allowed ? (origin || '*') : ALLOWED_ORIGIN,
+    'Access-Control-Allow-Origin': resolvedOrigin,
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-    'Access-Control-Max-Age': '86400'
+    'Access-Control-Max-Age': '86400',
+    Vary: 'Origin'
   }
+}
+
+function isOriginAllowed(origin) {
+  const isDev = process.env.NODE_ENV === 'development'
+  if (isDev && !ALLOWED_ORIGINS.length) return true
+  if (!STRICT_CORS && !ALLOWED_ORIGINS.length) return true
+  if (!origin) return true
+  return ALLOWED_ORIGINS.includes(String(origin).trim())
 }
 
 function applyHeaders(res, headers) {
@@ -140,6 +160,9 @@ async function ensureWorkspaceForUser(supabase, user) {
 
 export default async function handler(req, res) {
   const origin = req.headers.origin || ''
+  if (!isOriginAllowed(origin)) {
+    return res.status(403).json({ error: 'Origen no permitido.' })
+  }
   const headers = corsHeaders(origin)
   applyHeaders(res, headers)
 
@@ -179,4 +202,3 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'No se pudo garantizar workspace para el usuario' })
   }
 }
-

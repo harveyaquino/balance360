@@ -1,4 +1,5 @@
-﻿const USER_AGENT = 'Mozilla/5.0 (compatible; BALANCE360/0.5; +https://balance360.app)'
+const USER_AGENT = 'Mozilla/5.0 (compatible; BALANCE360/0.5; +https://balance360.app)'
+const FETCH_TIMEOUT_MS = Number(process.env.SIGNALS_FETCH_TIMEOUT_MS || 9000)
 
 function normalizeWhitespace(value) {
   return String(value || '').replace(/\s+/g, ' ').trim()
@@ -35,8 +36,21 @@ function stripHtml(value) {
   )
 }
 
+async function fetchWithTimeout(url, options = {}) {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
+  try {
+    return await fetch(url, {
+      ...options,
+      signal: controller.signal
+    })
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
 async function fetchText(url) {
-  const response = await fetch(url, {
+  const response = await fetchWithTimeout(url, {
     headers: { 'User-Agent': USER_AGENT, Accept: 'text/html,application/json;q=0.9,*/*;q=0.8' }
   })
 
@@ -48,7 +62,7 @@ async function fetchText(url) {
 }
 
 async function fetchJson(url, options = {}) {
-  const response = await fetch(url, {
+  const response = await fetchWithTimeout(url, {
     ...options,
     headers: {
       'User-Agent': USER_AGENT,
@@ -503,7 +517,7 @@ export function buildSignalsSummary(signals) {
   const lines = [
     `Empresa evaluada: ${signals.company}`,
     `Mercado objetivo: ${signals.marketCountry || 'sin especificar'}`,
-    `Probabilidad de existencia pÃºblica detectable: ${signals.existenceLikely ? 'alta' : 'baja'} (${signals.confidenceScore}/100)`
+    `Probabilidad de existencia pública detectable: ${signals.existenceLikely ? 'alta' : 'baja'} (${signals.confidenceScore}/100)`
   ]
 
   lines.push(
@@ -514,7 +528,7 @@ export function buildSignalsSummary(signals) {
 
   lines.push(
     signals.google_business?.found
-      ? `Google Business: seÃ±al real detectada (${signals.google_business.place?.name || 'ficha encontrada'})`
+      ? `Google Business: señal real detectada (${signals.google_business.place?.name || 'ficha encontrada'})`
       : 'Google Business: no encontrada'
   )
 
@@ -531,11 +545,11 @@ export function buildSignalsSummary(signals) {
   )
 
   lines.push(`Redes sociales: ${signals.rrss.count || 0} perfiles detectados`)
-  lines.push(`Menciones orgÃ¡nicas: ${signals.organic_mentions.mentionsCount || 0} resultados visibles`)
+  lines.push(`Menciones orgánicas: ${signals.organic_mentions.mentionsCount || 0} resultados visibles`)
   lines.push(`Noticias recientes: ${signals.news_mentions?.mentionsCount || 0} resultados en Google News`)
 
   if (signals.organic_mentions.snippets?.length) {
-    lines.push('Snippets orgÃ¡nicos relevantes:')
+    lines.push('Snippets orgánicos relevantes:')
     signals.organic_mentions.snippets.slice(0, 3).forEach((item, index) => {
       lines.push(`${index + 1}. ${item}`)
     })
@@ -543,3 +557,4 @@ export function buildSignalsSummary(signals) {
 
   return lines.join('\n')
 }
+

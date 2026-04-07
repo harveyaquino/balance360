@@ -4,11 +4,17 @@ import { buildSignalsSummary, collectPublicSignals } from './lib/sources.js'
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || ''
 const MAX_INPUT_LENGTH = 120
 const RATE_LIMIT_WINDOW = 60_000
-const RATE_LIMIT_MAX = 10
+const RATE_LIMIT_MAX = Number(process.env.RATE_LIMIT_MAX || 12)
+const AUTH_REQUIRED = process.env.REQUIRE_AUTH_ANALYZE !== 'false'
+const STRICT_CORS = process.env.STRICT_CORS === 'true'
+const ALLOWED_ORIGINS = ALLOWED_ORIGIN
+  .split(',')
+  .map((item) => item.trim())
+  .filter(Boolean)
 const CACHE_TTL_DAYS = 7
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
-const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || 'claude-3-5-sonnet-latest'
-const ANTHROPIC_FALLBACK_MODELS = (process.env.ANTHROPIC_MODEL_FALLBACKS || '')
+const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-20250514'
+const ANTHROPIC_FALLBACK_MODELS = (process.env.ANTHROPIC_MODEL_FALLBACKS || 'claude-3-7-sonnet-20250219')
   .split(',')
   .map((model) => model.trim())
   .filter(Boolean)
@@ -30,12 +36,12 @@ const COUNTRY_HINTS = [
 
 const rateLimitMap = new Map()
 
-function getRateLimit(ip) {
+function getRateLimit(key) {
   const now = Date.now()
-  const entry = rateLimitMap.get(ip)
+  const entry = rateLimitMap.get(key)
 
   if (!entry || now - entry.timestamp > RATE_LIMIT_WINDOW) {
-    rateLimitMap.set(ip, { count: 1, timestamp: now })
+    rateLimitMap.set(key, { count: 1, timestamp: now })
     return { allowed: true, remaining: RATE_LIMIT_MAX - 1 }
   }
 
@@ -43,6 +49,23 @@ function getRateLimit(ip) {
 
   entry.count += 1
   return { allowed: true, remaining: RATE_LIMIT_MAX - entry.count }
+}
+
+async function getServerSideRateLimit(supabase, userId) {
+  if (!supabase || !userId) return { allowed: true, remaining: RATE_LIMIT_MAX }
+  const windowStart = new Date(Date.now() - RATE_LIMIT_WINDOW).toISOString()
+
+  const { count, error } = await supabase
+    .from('analysis_requests')
+    .select('id', { count: 'exact', head: true })
+    .eq('requested_by', userId)
+    .gte('started_at', windowStart)
+
+  if (error) return { allowed: true, remaining: RATE_LIMIT_MAX }
+
+  const used = Number(count || 0)
+  const remaining = Math.max(0, RATE_LIMIT_MAX - used)
+  return { allowed: used < RATE_LIMIT_MAX, remaining }
 }
 
 function slugify(name) {
@@ -85,14 +108,29 @@ function detectCountryFromText(value) {
 
 function corsHeaders(origin) {
   const isDev = process.env.NODE_ENV === 'development'
-  const allowed = !ALLOWED_ORIGIN || origin === ALLOWED_ORIGIN || isDev
+  const allowAnyInDev = isDev && !ALLOWED_ORIGINS.length
+  const allowAnyByConfig = !STRICT_CORS && !ALLOWED_ORIGINS.length
+  const normalizedOrigin = String(origin || '').trim()
+  const allowed = allowAnyInDev || allowAnyByConfig || ALLOWED_ORIGINS.includes(normalizedOrigin)
+  const resolvedOrigin = allowed
+    ? (normalizedOrigin || ((allowAnyInDev || allowAnyByConfig) ? '*' : ALLOWED_ORIGINS[0] || ''))
+    : (ALLOWED_ORIGINS[0] || '')
 
   return {
-    'Access-Control-Allow-Origin': allowed ? (origin || '*') : ALLOWED_ORIGIN,
+    'Access-Control-Allow-Origin': resolvedOrigin,
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-    'Access-Control-Max-Age': '86400'
+    'Access-Control-Max-Age': '86400',
+    Vary: 'Origin'
   }
+}
+
+function isOriginAllowed(origin) {
+  const isDev = process.env.NODE_ENV === 'development'
+  if (isDev && !ALLOWED_ORIGINS.length) return true
+  if (!STRICT_CORS && !ALLOWED_ORIGINS.length) return true
+  if (!origin) return true
+  return ALLOWED_ORIGINS.includes(String(origin).trim())
 }
 
 function applyHeaders(res, headers) {
@@ -741,11 +779,12 @@ async function getCachedAudit(supabase, company) {
 async function getCompanyRecord(supabase, workspaceId, companyId, companyName) {
   if (!supabase) return null
 
-  if (companyId) {
+  if (companyId && workspaceId) {
     const { data } = await supabase
       .from('companies')
       .select('*')
       .eq('id', companyId)
+      .eq('workspace_id', workspaceId)
       .maybeSingle()
     if (data) return data
   }
@@ -880,6 +919,69 @@ async function buildAnalysisContext({
     marketCountry,
     competitors: ranked
   }
+}
+
+async function requireWorkspaceMembership(supabase, workspaceId, userId) {
+  if (!supabase || !workspaceId || !userId) return false
+
+  const { data, error } = await supabase
+    .from('workspace_members')
+    .select('workspace_id, status')
+    .eq('workspace_id', workspaceId)
+    .eq('user_id', userId)
+    .limit(1)
+    .maybeSingle()
+
+  if (error || !data) return false
+  const status = normalizeText(data.status, 'active').toLowerCase()
+  return ['active', 'owner', 'member'].includes(status)
+}
+
+async function resolveAuthorizedIds({
+  supabase,
+  userId,
+  requestedWorkspaceId,
+  requestedCompanyId,
+  companyName
+}) {
+  if (!supabase || !userId) return { workspaceId: null, companyId: null }
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('workspace_id')
+    .eq('id', userId)
+    .maybeSingle()
+
+  let workspaceId = requestedWorkspaceId || profile?.workspace_id || null
+  if (!workspaceId) return { workspaceId: null, companyId: null }
+
+  const isMember = await requireWorkspaceMembership(supabase, workspaceId, userId)
+  if (!isMember) return { workspaceId: null, companyId: null }
+
+  if (requestedCompanyId) {
+    const { data: ownedCompany } = await supabase
+      .from('companies')
+      .select('id')
+      .eq('id', requestedCompanyId)
+      .eq('workspace_id', workspaceId)
+      .maybeSingle()
+
+    return { workspaceId, companyId: ownedCompany?.id || null }
+  }
+
+  if (companyName) {
+    const { data: matchByName } = await supabase
+      .from('companies')
+      .select('id')
+      .eq('workspace_id', workspaceId)
+      .ilike('name', companyName)
+      .limit(1)
+      .maybeSingle()
+
+    return { workspaceId, companyId: matchByName?.id || null }
+  }
+
+  return { workspaceId, companyId: null }
 }
 
 function normalizeFrenteScore(front) {
@@ -1556,6 +1658,9 @@ async function requestAnthropicAnalysis(apiKey, company, signals, context = {}) 
 }
 async function handleRequest(req, res) {
   const origin = req.headers.origin || ''
+  if (!isOriginAllowed(origin)) {
+    return res.status(403).json({ error: 'Origen no permitido.' })
+  }
   const headers = corsHeaders(origin)
 
   if (req.method === 'OPTIONS') {
@@ -1568,18 +1673,6 @@ async function handleRequest(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' })
   }
-
-  const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || 'unknown'
-  const { allowed, remaining } = getRateLimit(ip)
-
-  if (!allowed) {
-    applyHeaders(res, { 'Retry-After': '60' })
-    return res
-      .status(429)
-      .json({ error: 'Demasiadas solicitudes. Intenta en 60 segundos.' })
-  }
-
-  res.setHeader('X-RateLimit-Remaining', remaining)
 
   let body
   try {
@@ -1599,12 +1692,52 @@ async function handleRequest(req, res) {
   }
 
   const supabase = getSupabaseClient()
+  if (!supabase) {
+    return res.status(500).json({ error: 'Supabase no configurado en servidor.' })
+  }
+
   const authUser = await getAuthenticatedUser(supabase, req.headers.authorization || '')
+  if (AUTH_REQUIRED && !authUser?.id) {
+    return res.status(401).json({ error: 'Debes iniciar sesión para ejecutar análisis.' })
+  }
+
+  const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || 'unknown'
+  const rateLimitKey = authUser?.id ? `user:${authUser.id}` : `ip:${ip}`
+  const memoryRate = getRateLimit(rateLimitKey)
+  const persistentRate = await getServerSideRateLimit(supabase, authUser?.id || null)
+  const allowed = memoryRate.allowed && persistentRate.allowed
+  const remaining = Math.min(memoryRate.remaining, persistentRate.remaining)
+
+  if (!allowed) {
+    applyHeaders(res, { 'Retry-After': '60' })
+    return res
+      .status(429)
+      .json({ error: 'Demasiadas solicitudes. Intenta en 60 segundos.' })
+  }
+
+  res.setHeader('X-RateLimit-Remaining', remaining)
+
+  const authorizedIds = await resolveAuthorizedIds({
+    supabase,
+    userId: authUser?.id || null,
+    requestedWorkspaceId: workspaceId,
+    requestedCompanyId: companyId,
+    companyName: company
+  })
+
+  if (!authorizedIds.workspaceId) {
+    return res.status(403).json({ error: 'No tienes acceso al workspace solicitado.' })
+  }
+
+  if (companyId && !authorizedIds.companyId) {
+    return res.status(403).json({ error: 'La empresa seleccionada no pertenece a tu workspace.' })
+  }
+
   const profile = authUser ? await getUserProfile(supabase, authUser.id) : null
   const analysisContext = await buildAnalysisContext({
     supabase,
-    workspaceId,
-    companyId,
+    workspaceId: authorizedIds.workspaceId,
+    companyId: authorizedIds.companyId,
     companyName: company,
     authUserId: authUser?.id || null
   })
@@ -1623,8 +1756,8 @@ async function handleRequest(req, res) {
   }
 
   const analysisRequest = await createAnalysisRequest(supabase, {
-    workspace_id: workspaceId,
-    company_id: companyId,
+    workspace_id: authorizedIds.workspaceId,
+    company_id: authorizedIds.companyId,
     requested_by: authUser?.id || null,
     request_type: requestType,
     status: 'running',
@@ -1637,7 +1770,7 @@ async function handleRequest(req, res) {
     })),
     input_payload: {
       source: 'web',
-      public_analysis: !authUser,
+      public_analysis: false,
       company,
       market_country: analysisContext.marketCountry
     },

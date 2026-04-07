@@ -76,6 +76,13 @@ export function useBalance360() {
         return null
       }
 
+      if (response.status === 401) {
+        const body = await response.json().catch(() => ({}))
+        setError(body.error || 'Necesitas iniciar sesión para analizar empresas o productos.')
+        setStatus('error')
+        return null
+      }
+
       if (response.status === 403) {
         const body = await response.json().catch(() => ({}))
         setError(body.error || 'Tu plan actual no permite mas analisis en este periodo.')
