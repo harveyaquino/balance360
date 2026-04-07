@@ -386,7 +386,7 @@ function buildSystemPrompt(signals, context = {}) {
 
 function inferFallbackCompetitors(company, marketCountry = DEFAULT_MARKET_COUNTRY) {
   const key = String(company || '').toLowerCase()
-  const market = String(marketCountry || '').toLowerCase()
+  const market = String(marketCountry || DEFAULT_MARKET_COUNTRY).toLowerCase()
   const isBanking = /scotiabank|bbva|interbank|bcp|banco|banbif|pichincha/.test(key)
   const isWalletOrFintech = /yape|plin|tunki|bim|fintech|billetera|wallet|pagos?/.test(key)
   const isTelco = /claro|movistar|entel|wom|bitel|telco|telecom/.test(key)
@@ -810,6 +810,8 @@ async function buildAnalysisContext({
     marketCountry = normalizeText(data?.country)
   }
 
+  if (!marketCountry) marketCountry = DEFAULT_MARKET_COUNTRY
+
   const fromTable = await getCompanyCompetitors(supabase, workspaceId, companyId)
   const baseCompetitors = fromTable.map((item) => ({
     name: normalizeText(item.competitor_name),
@@ -847,8 +849,6 @@ async function buildAnalysisContext({
     }
     competitors.push({ ...item, audit, signals })
   }
-
-  if (!marketCountry) marketCountry = DEFAULT_MARKET_COUNTRY
 
   return {
     marketCountry,
