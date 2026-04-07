@@ -384,26 +384,57 @@ function buildSystemPrompt(signals, context = {}) {
   ].join('\n')
 }
 
-function inferFallbackCompetitors(company) {
+function inferFallbackCompetitors(company, marketCountry = DEFAULT_MARKET_COUNTRY) {
   const key = String(company || '').toLowerCase()
+  const market = String(marketCountry || '').toLowerCase()
+  const isBanking = /scotiabank|bbva|interbank|bcp|banco|banbif|pichincha/.test(key)
+  const isTelco = /claro|movistar|entel|wom|bitel|telco|telecom/.test(key)
 
-  if (/scotiabank|bbva|interbank|bcp|banco|banbif/.test(key)) {
+  if (isBanking) {
+    if (market.includes('peru')) {
+      return [
+        { name: 'BCP', score: 66, fortaleza: 'Mayor alcance digital y recordacion de marca en banca retail.', brecha: 'Velocidad de iteracion en experiencia movil y comunicacion de beneficios.' },
+        { name: 'Interbank', score: 64, fortaleza: 'Ecosistema de app y web con buena continuidad de flujos.', brecha: 'Consistencia de reputacion y respuesta en canales publicos.' }
+      ]
+    }
+
+    if (market.includes('ecuador')) {
+      return [
+        { name: 'Banco Guayaquil', score: 64, fortaleza: 'Mejor cobertura digital en banca de consumo y empresas.', brecha: 'Consistencia de respuesta en soporte publico.' },
+        { name: 'Produbanco', score: 62, fortaleza: 'Experiencia web y onboarding mas estructurados.', brecha: 'Diferenciacion de propuesta digital en segmentos clave.' }
+      ]
+    }
+
     return [
       { name: 'BCP', score: 66, fortaleza: 'Mayor alcance digital y recordaciÃ³n de marca en banca retail.', brecha: 'Velocidad de iteraciÃ³n en experiencia mÃ³vil y comunicaciÃ³n de beneficios.' },
       { name: 'BBVA', score: 64, fortaleza: 'Ecosistema de app y web con mejor continuidad de flujos.', brecha: 'Consistencia de reputaciÃ³n y respuesta en canales pÃºblicos.' }
     ]
   }
 
-  if (/claro|movistar|entel|wom|bitel|telco|telecom/.test(key)) {
+  if (isTelco) {
+    if (market.includes('peru')) {
+      return [
+        { name: 'Movistar', score: 62, fortaleza: 'Presencia organica y social mas estable por volumen de marca.', brecha: 'Calidad percibida en soporte digital y tiempos de respuesta.' },
+        { name: 'Entel', score: 60, fortaleza: 'Mensaje comercial mas consistente en campanas digitales.', brecha: 'Claridad de propuesta digital por segmento y autoservicio.' }
+      ]
+    }
+
     return [
       { name: 'Movistar', score: 62, fortaleza: 'Presencia orgÃ¡nica y social mÃ¡s estable por volumen de marca.', brecha: 'Calidad percibida en soporte digital y tiempos de respuesta.' },
       { name: 'Entel', score: 60, fortaleza: 'Mensaje comercial mÃ¡s consistente en campaÃ±as digitales.', brecha: 'Claridad de propuesta digital por segmento y autoservicio.' }
     ]
   }
 
+  if (market.includes('peru')) {
+    return [
+      { name: 'Falabella', score: 61, fortaleza: 'Ejecucion comercial digital consistente en picos de demanda.', brecha: 'Experiencia postventa y reputacion publica.' },
+      { name: 'Ripley', score: 59, fortaleza: 'Buena activacion promocional en canales digitales.', brecha: 'Continuidad de experiencia entre app, web y soporte.' }
+    ]
+  }
+
   return [
-    { name: 'Competidor lÃ­der del sector', score: 63, fortaleza: 'Mayor madurez de marca y distribuciÃ³n digital.', brecha: 'Consistencia de experiencia y conversiÃ³n en puntos crÃ­ticos.' },
-    { name: 'Competidor retador', score: 58, fortaleza: 'EjecuciÃ³n mÃ¡s Ã¡gil en contenido y performance digital.', brecha: 'DiferenciaciÃ³n funcional visible en canales pÃºblicos.' }
+    { name: 'Competidor referente A', score: 63, fortaleza: 'Mayor madurez de marca y distribucion digital.', brecha: 'Consistencia de experiencia y conversion en puntos criticos.' },
+    { name: 'Competidor referente B', score: 58, fortaleza: 'Ejecucion mas agil en contenido y performance digital.', brecha: 'Diferenciacion funcional visible en canales publicos.' }
   ]
 }
 
@@ -526,7 +557,7 @@ function buildFallbackAudit(company, signals, details = '', context = {}) {
   }
   organicHallazgos.push(rootCause)
   const contextCompetitors = Array.isArray(context?.competitors) ? context.competitors : []
-  const fallbackCompetitors = inferFallbackCompetitors(company)
+  const fallbackCompetitors = inferFallbackCompetitors(company, context?.marketCountry)
   const competitors = (contextCompetitors.length ? contextCompetitors : fallbackCompetitors)
     .map((item) => ({
       name: normalizeText(item?.name),
@@ -772,7 +803,7 @@ async function buildAnalysisContext({
   }
 
   if (baseCompetitors.length < 2) {
-    for (const fallback of inferFallbackCompetitors(companyName)) {
+    for (const fallback of inferFallbackCompetitors(companyName, marketCountry)) {
       if (baseCompetitors.length >= 2) break
       if (!baseCompetitors.some((item) => item.name.toLowerCase() === fallback.name.toLowerCase())) {
         baseCompetitors.push({ name: fallback.name, slug: slugify(fallback.name) })
