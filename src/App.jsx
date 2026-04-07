@@ -583,6 +583,7 @@ function OnboardingPanel({ form, loading, error, steps, onChange, onSubmit }) {
 function Dashboard({ profile, workspace, companies, history, selectedCompanyId, onCompanyChange, onAnalyze, onAnalyzeByName, loading }) {
   const selectedCompany = companies.find((item) => item.id === selectedCompanyId) || companies[0] || null
   const [searchInput, setSearchInput] = useState('')
+  const [activeTab, setActiveTab] = useState('overview')
 
   const handleSearchSubmit = (event) => {
     event.preventDefault()
@@ -633,81 +634,109 @@ function Dashboard({ profile, workspace, companies, history, selectedCompanyId, 
         </div>
       </section>
 
-      <section className="grid lg:grid-cols-[1.08fr,0.92fr] gap-6 items-start">
-        <div className="balance360-card p-8">
-          <p className="text-balance360-accent text-xs font-mono uppercase tracking-widest mb-3">Dashboard personal</p>
-          <h2 className="text-3xl font-semibold text-balance360-text mb-3">
-            Bienvenido, {safeText(profile?.display_name || 'equipo')}
-          </h2>
-          <p className="text-balance360-muted text-sm mb-6 leading-7">
-            Tienes el plan <span className="text-balance360-text font-semibold uppercase">{safeText(profile?.plan)}</span> y has usado{' '}
-            <span className="text-balance360-text font-semibold">{profile?.queries_used ?? 0}</span> de{' '}
-            <span className="text-balance360-text font-semibold">{profile?.queries_limit ?? 0}</span> análisis en este período.
-          </p>
-
-          <div className="grid sm:grid-cols-2 gap-4 mb-6">
-            <div className="balance360-surface-card">
-              <p className="text-balance360-muted text-xs uppercase tracking-wider mb-1">Workspace</p>
-              <p className="text-balance360-text font-semibold">{safeText(workspace?.name || 'Sin nombre')}</p>
-            </div>
-            <div className="balance360-surface-card">
-              <p className="text-balance360-muted text-xs uppercase tracking-wider mb-1">Próximo reset</p>
-              <p className="text-balance360-text font-semibold">{formatDate(profile?.reset_at)}</p>
-            </div>
+      <section className="balance360-card p-5 md:p-6">
+        <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              className={`balance360-chip ${activeTab === 'overview' ? 'balance360-chip-active' : ''}`}
+              onClick={() => setActiveTab('overview')}
+            >
+              Dashboard personal
+            </button>
+            <button
+              type="button"
+              className={`balance360-chip ${activeTab === 'history' ? 'balance360-chip-active' : ''}`}
+              onClick={() => setActiveTab('history')}
+            >
+              Historial reciente
+            </button>
           </div>
-
-          <div className="space-y-3 pt-2">
-            <label className="block text-balance360-muted text-xs uppercase tracking-wider">Empresa activa</label>
-            <div className="flex flex-col md:flex-row gap-3">
-              <select className="balance360-input" value={selectedCompanyId || ''} onChange={(event) => onCompanyChange(event.target.value)} disabled={!companies.length || loading}>
-                {companies.length === 0 && <option value="">No hay empresas aún</option>}
-                {companies.map((company) => (
-                  <option key={company.id} value={company.id}>{company.name}</option>
-                ))}
-              </select>
-              <button className="balance360-btn whitespace-nowrap" onClick={() => selectedCompany && onAnalyze(selectedCompany)} disabled={!selectedCompany || loading}>
-                {loading ? 'Actualizando...' : 'Actualizar análisis'}
-              </button>
-              <button
-                className="balance360-btn balance360-btn-secondary whitespace-nowrap"
-                onClick={() => selectedCompany && onAnalyze(selectedCompany, { forceRefresh: true })}
-                disabled={!selectedCompany || loading}
-              >
-                Recalcular sin cache
-              </button>
-            </div>
-            {selectedCompany && (
-              <p className="text-balance360-muted text-sm">
-                Sector: {safeText(selectedCompany.sector || 'Sin sector')}  slug: {safeText(selectedCompany.slug)}
-              </p>
-            )}
-          </div>
+          <span className="balance360-tag text-balance360-accent">
+            {activeTab === 'overview' ? 'vista operativa' : `${history.length} registros`}
+          </span>
         </div>
 
-        <div className="balance360-card p-6">
-          <div className="flex items-center justify-between gap-3 mb-4">
-            <h3 className="text-balance360-text font-semibold">Historial reciente</h3>
-            <span className="balance360-tag text-balance360-accent">{history.length} registros</span>
-          </div>
-          <div className="space-y-3 max-h-[560px] overflow-y-auto pr-1">
-            {history.length === 0 && (
-              <p className="text-balance360-muted text-sm leading-6">
-                Todavía no hay auditorías guardadas para este usuario.
+        {activeTab === 'overview' && (
+          <div className="space-y-6">
+            <div>
+              <p className="text-balance360-accent text-xs font-mono uppercase tracking-widest mb-3">Dashboard personal</p>
+              <h2 className="text-3xl font-semibold text-balance360-text mb-3">
+                Bienvenido, {safeText(profile?.display_name || 'equipo')}
+              </h2>
+              <p className="text-balance360-muted text-sm leading-7">
+                Tienes el plan <span className="text-balance360-text font-semibold uppercase">{safeText(profile?.plan)}</span> y has usado{' '}
+                <span className="text-balance360-text font-semibold">{profile?.queries_used ?? 0}</span> de{' '}
+                <span className="text-balance360-text font-semibold">{profile?.queries_limit ?? 0}</span> análisis en este período.
               </p>
-            )}
-            {history.map((item) => (
-              <div key={item.id} className="balance360-surface-card hover:border-balance360-accent/30 transition-colors">
-                <div className="flex items-center justify-between gap-3 mb-1">
-                  <p className="text-balance360-text font-semibold">{safeText(item.company)}</p>
-                  <span className="text-balance360-accent font-mono text-sm">{item.score}</span>
-                </div>
-                <p className="text-balance360-muted text-xs">
-                  {safeText(item.sector || 'Sin sector')}  {formatDate(item.created_at)}
-                </p>
+            </div>
+
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div className="balance360-surface-card">
+                <p className="text-balance360-muted text-xs uppercase tracking-wider mb-1">Workspace</p>
+                <p className="text-balance360-text font-semibold">{safeText(workspace?.name || 'Sin nombre')}</p>
               </div>
-            ))}
+              <div className="balance360-surface-card">
+                <p className="text-balance360-muted text-xs uppercase tracking-wider mb-1">Próximo reset</p>
+                <p className="text-balance360-text font-semibold">{formatDate(profile?.reset_at)}</p>
+              </div>
+            </div>
+
+            <div className="space-y-3 pt-2">
+              <label className="block text-balance360-muted text-xs uppercase tracking-wider">Empresa activa</label>
+              <div className="flex flex-col md:flex-row gap-3">
+                <select className="balance360-input" value={selectedCompanyId || ''} onChange={(event) => onCompanyChange(event.target.value)} disabled={!companies.length || loading}>
+                  {companies.length === 0 && <option value="">No hay empresas aún</option>}
+                  {companies.map((company) => (
+                    <option key={company.id} value={company.id}>{company.name}</option>
+                  ))}
+                </select>
+                <button className="balance360-btn whitespace-nowrap" onClick={() => selectedCompany && onAnalyze(selectedCompany)} disabled={!selectedCompany || loading}>
+                  {loading ? 'Actualizando...' : 'Actualizar análisis'}
+                </button>
+                <button
+                  className="balance360-btn balance360-btn-secondary whitespace-nowrap"
+                  onClick={() => selectedCompany && onAnalyze(selectedCompany, { forceRefresh: true })}
+                  disabled={!selectedCompany || loading}
+                >
+                  Recalcular sin cache
+                </button>
+              </div>
+              {selectedCompany && (
+                <p className="text-balance360-muted text-sm">
+                  Sector: {safeText(selectedCompany.sector || 'Sin sector')}  slug: {safeText(selectedCompany.slug)}
+                </p>
+              )}
+            </div>
           </div>
-        </div>
+        )}
+
+        {activeTab === 'history' && (
+          <div>
+            <h3 className="text-balance360-text font-semibold text-lg mb-3">Historial de análisis</h3>
+            <p className="text-balance360-muted text-sm mb-4">
+              Revisa tus ejecuciones más recientes y usa la puntuación para priorizar reanálisis.
+            </p>
+            <div className="space-y-3 max-h-[620px] overflow-y-auto pr-1">
+              {history.length === 0 && (
+                <p className="text-balance360-muted text-sm leading-6">
+                  Todavía no hay auditorías guardadas para este usuario.
+                </p>
+              )}
+              {history.map((item) => (
+                <div key={item.id} className="balance360-surface-card hover:border-balance360-accent/30 transition-colors">
+                  <div className="flex items-center justify-between gap-3 mb-1">
+                    <p className="text-balance360-text font-semibold">{safeText(item.company)}</p>
+                    <span className="text-balance360-accent font-mono text-sm">{item.score}</span>
+                  </div>
+                  <p className="text-balance360-muted text-xs">
+                    {safeText(item.sector || 'Sin sector')}  {formatDate(item.created_at)}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </section>
     </div>
   )

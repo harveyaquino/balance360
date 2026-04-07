@@ -8,7 +8,10 @@
     "build": "vite build",
     "preview": "vite preview",
     "lint": "eslint src --ext .js,.jsx --max-warnings 0",
-    "audit": "npm audit --audit-level=moderate"
+    "audit": "npm audit --audit-level=moderate",
+    "security:dast": "node scripts/security-dast.mjs",
+    "security:sat": "node scripts/security-sat.mjs",
+    "security:check": "npm run audit && npm run security:dast && npm run security:sat"
   },
   "dependencies": {
     "react": "^18.3.0",
