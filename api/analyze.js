@@ -101,9 +101,39 @@ function applyHeaders(res, headers) {
   return res
 }
 
+const MOJIBAKE_PATTERN = /Ã.|Â.|â.|ðŸ|ï¿½|�/
+
+function repairMojibake(value) {
+  if (typeof value !== 'string') return ''
+  let next = value
+
+  for (let index = 0; index < 2; index += 1) {
+    if (!MOJIBAKE_PATTERN.test(next)) break
+    try {
+      const decoded = Buffer.from(next, 'latin1').toString('utf8')
+      if (!decoded || decoded === next) break
+      next = decoded
+    } catch {
+      break
+    }
+  }
+
+  return next
+}
+
+function normalizeDeepStrings(value) {
+  if (typeof value === 'string') return repairMojibake(value).trim()
+  if (Array.isArray(value)) return value.map((item) => normalizeDeepStrings(item))
+  if (!value || typeof value !== 'object') return value
+
+  return Object.fromEntries(
+    Object.entries(value).map(([key, nested]) => [key, normalizeDeepStrings(nested)])
+  )
+}
+
 function normalizeText(value, fallback = '') {
-  if (typeof value !== 'string') return fallback
-  return value.trim()
+  if (typeof value !== 'string') return repairMojibake(String(fallback || '')).trim()
+  return repairMojibake(value).trim()
 }
 
 function normalizeList(value) {
@@ -204,6 +234,11 @@ function normalizeAuditResult(raw, company) {
       )
     }
   }
+}
+
+function sanitizeAuditPayload(raw, companyFallback = '') {
+  const normalized = normalizeAuditResult(raw, companyFallback || normalizeText(raw?.company, 'Empresa'))
+  return normalizeDeepStrings(normalized)
 }
 
 function pushUnique(list, value) {
@@ -929,16 +964,17 @@ async function saveAudit(supabase, result, userId) {
 
   const expiresAt = new Date()
   expiresAt.setDate(expiresAt.getDate() + CACHE_TTL_DAYS)
+  const sanitized = sanitizeAuditPayload(result, result?.company)
 
   const payload = {
-    company: result.company,
-    company_slug: slugify(result.company),
-    sector: result.sector,
-    score: result.score,
-    frentes: result.frentes,
-    voz_usuario: result.voz_usuario,
-    gap_principal: result.gap_principal,
-    pasos: result.pasos,
+    company: sanitized.company,
+    company_slug: slugify(sanitized.company),
+    sector: sanitized.sector,
+    score: sanitized.score,
+    frentes: sanitized.frentes,
+    voz_usuario: sanitized.voz_usuario,
+    gap_principal: sanitized.gap_principal,
+    pasos: sanitized.pasos,
     expires_at: expiresAt.toISOString(),
     is_public: true,
     user_id: userId || null
@@ -955,7 +991,7 @@ async function saveAudit(supabase, result, userId) {
     return null
   }
 
-  await upsertBenchmark(supabase, result, data.id)
+  await upsertBenchmark(supabase, sanitized, data.id)
   if (userId) await incrementUserQueries(supabase, userId)
 
   return data
@@ -1154,7 +1190,7 @@ async function handleRequest(req, res) {
       updated_at: new Date().toISOString()
     })
 
-    return res.status(200).json({
+    return res.status(200).json(normalizeDeepStrings({
       ...cached,
       ...cachedWithContext,
       audit_id: auditId,
@@ -1162,7 +1198,7 @@ async function handleRequest(req, res) {
       signal_confidence: publicSignals.confidenceScore,
       signals_evidence: publicSignals.evidence,
       data_quality: publicSignals.existenceLikely ? 'verified_signals' : 'weak_signals'
-    })
+    }))
   }
 
   const apiKey = process.env.ANTHROPIC_API_KEY
@@ -1180,7 +1216,7 @@ async function handleRequest(req, res) {
     })
 
     console.error('[BALANCE360] ANTHROPIC_API_KEY no configurada, devolviendo fallback')
-    return res.status(200).json({
+    return res.status(200).json(normalizeDeepStrings({
       ...fallback,
       audit_id: savedFallback?.id || null,
       from_cache: false,
@@ -1188,7 +1224,7 @@ async function handleRequest(req, res) {
       signal_confidence: publicSignals.confidenceScore,
       signals_evidence: publicSignals.evidence,
       data_quality: publicSignals.existenceLikely ? 'verified_signals' : 'weak_signals'
-    })
+    }))
   }
 
   try {
@@ -1204,14 +1240,14 @@ async function handleRequest(req, res) {
       updated_at: new Date().toISOString()
     })
 
-    return res.status(200).json({
+    return res.status(200).json(normalizeDeepStrings({
       ...reconciled,
       audit_id: savedAudit?.id || null,
       from_cache: false,
       signal_confidence: publicSignals.confidenceScore,
       signals_evidence: publicSignals.evidence,
       data_quality: publicSignals.existenceLikely ? 'verified_signals' : 'weak_signals'
-    })
+    }))
   } catch (error) {
     const fallback = buildFallbackAudit(company, publicSignals, error.message, analysisContext)
     const savedFallback = await saveAudit(supabase, fallback, authUser?.id || null)
@@ -1226,7 +1262,7 @@ async function handleRequest(req, res) {
     })
 
     console.error('[BALANCE360] Error en anÃ¡lisis enriquecido, devolviendo fallback:', error.message)
-    return res.status(200).json({
+    return res.status(200).json(normalizeDeepStrings({
       ...fallback,
       audit_id: savedFallback?.id || null,
       from_cache: false,
@@ -1234,7 +1270,7 @@ async function handleRequest(req, res) {
       signal_confidence: publicSignals.confidenceScore,
       signals_evidence: publicSignals.evidence,
       data_quality: publicSignals.existenceLikely ? 'verified_signals' : 'weak_signals'
-    })
+    }))
   }
 }
 
