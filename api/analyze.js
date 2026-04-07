@@ -853,20 +853,75 @@ const FRONT_CACHE_TTL_HOURS = {
 }
 
 function deriveFrontScoresFromSignals(signals) {
-  const appFound = Boolean(signals?.app?.app_store || signals?.app?.play_store)
+  const appStore = signals?.app?.app_store || null
+  const playStore = signals?.app?.play_store || null
+  const appStoreReviews = Number(appStore?.ratingCount || 0)
+  const playStoreReviews = Number(playStore?.reviews || 0)
+  const appReviewVolume = appStoreReviews + playStoreReviews
+  const appFound = Boolean(appStore || playStore)
+
   const webFound = Boolean(signals?.web?.found)
+  const hasWebTitle = Boolean(signals?.web?.title)
+  const hasWebDescription = Boolean(signals?.web?.description)
+
   const rrssCount = Number(signals?.rrss?.count || 0)
   const reviewsFound = Boolean(signals?.reviews?.found)
+  const reviewCount =
+    Number(signals?.reviews?.sources?.app_store?.ratingCount || 0) +
+    Number(signals?.reviews?.sources?.play_store?.ratingCount || 0) +
+    Number(signals?.reviews?.sources?.maps?.ratingCount || 0)
   const gbFound = Boolean(signals?.google_business?.found)
+  const gbRating = Number(signals?.google_business?.place?.rating || 0)
+  const gbRatingCount = Number(signals?.google_business?.place?.ratingCount || 0)
   const organicMentions = Number(signals?.organic_mentions?.mentionsCount || 0)
 
+  const app = appFound
+    ? normalizeScore(
+      38 +
+      Math.min(14, Math.log10(Math.max(1, appReviewVolume + 1)) * 6) +
+      (appStore ? 4 : 0) +
+      (playStore ? 6 : 0),
+      18
+    )
+    : 18
+
+  const web = webFound
+    ? normalizeScore(
+      44 +
+      (hasWebTitle ? 9 : 0) +
+      (hasWebDescription ? 9 : 0),
+      24
+    )
+    : 24
+
+  const rrss = rrssCount
+    ? normalizeScore(20 + Math.min(42, rrssCount * 10), 20)
+    : 20
+
+  const reviews = reviewsFound
+    ? normalizeScore(26 + Math.min(34, Math.log10(Math.max(1, reviewCount + 1)) * 12), 18)
+    : 18
+
+  const googleBusiness = gbFound
+    ? normalizeScore(
+      28 +
+      Math.min(20, Math.log10(Math.max(1, gbRatingCount + 1)) * 7) +
+      Math.min(10, gbRating * 2),
+      20
+    )
+    : 20
+
+  const organic = organicMentions
+    ? normalizeScore(16 + Math.min(40, Math.log10(Math.max(1, organicMentions + 1)) * 16), 16)
+    : 16
+
   return {
-    app: appFound ? 54 : 18,
-    web: webFound ? 62 : 24,
-    rrss: rrssCount ? Math.min(72, 30 + rrssCount * 11) : 20,
-    reviews: reviewsFound ? 52 : 18,
-    google_business: gbFound ? 58 : 20,
-    organic_mentions: organicMentions ? Math.min(74, 24 + organicMentions * 6) : 16
+    app,
+    web,
+    rrss,
+    reviews,
+    google_business: googleBusiness,
+    organic_mentions: organic
   }
 }
 
@@ -920,6 +975,19 @@ function getCompetitorFrontScore(competitor, key) {
     return Number.isFinite(fromSignals) ? fromSignals : null
   }
   return null
+}
+
+function summarizeFrontExtremes(frentes) {
+  const rows = Object.entries(FRONT_LABELS)
+    .map(([key, label]) => ({ key, label, score: normalizeFrenteScore(frentes?.[key]) }))
+    .filter((item) => item.score != null)
+    .sort((a, b) => b.score - a.score)
+
+  if (!rows.length) return { top: null, bottom: null }
+  return {
+    top: rows[0],
+    bottom: rows[rows.length - 1]
+  }
 }
 
 function computeFrontBenchmark(targetFrentes, competitorsWithAudits) {
@@ -1026,18 +1094,27 @@ function buildCompetitiveNarrative(targetAudit, competitorsWithAudits) {
     const compScore = normalizeScore(item.audit?.score ?? estimateScoreFromSignals(item.signals), 0)
     const best = pickKeyGap(targetAudit?.frentes, derivedFrentes, 'competitor_advantage')
     const openGap = pickKeyGap(targetAudit?.frentes, derivedFrentes, 'target_advantage')
+    const extremes = summarizeFrontExtremes(derivedFrentes)
 
     const fortaleza = best
       ? best.delta > 0
         ? `Ventaja visible en ${best.label} (+${best.delta} vs nosotros).`
-        : `Paridad competitiva en ${best.label}.`
-      : 'Fortaleza competitiva visible en presencia digital.'
+        : (extremes.top
+          ? `Fortaleza principal en ${extremes.top.label} (score ${extremes.top.score}).`
+          : `Paridad competitiva en ${best.label}.`)
+      : (extremes.top
+        ? `Fortaleza principal en ${extremes.top.label} (score ${extremes.top.score}).`
+        : 'Fortaleza competitiva visible en presencia digital.')
 
     const brecha = openGap
       ? openGap.delta < 0
         ? `Brecha abierta para cerrar en ${openGap.label} (${openGap.delta}).`
-        : `Sin brechas fuertes detectadas por frente.`
-      : 'Brecha competitiva pendiente de cierre.'
+        : (extremes.bottom
+          ? `Punto vulnerable en ${extremes.bottom.label} (score ${extremes.bottom.score}).`
+          : `Sin brechas fuertes detectadas por frente.`)
+      : (extremes.bottom
+        ? `Punto vulnerable en ${extremes.bottom.label} (score ${extremes.bottom.score}).`
+        : 'Brecha competitiva pendiente de cierre.')
 
     return {
       name: normalizeText(item.name || item.audit?.company),
