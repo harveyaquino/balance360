@@ -187,10 +187,8 @@ function Hero({ onAnalyze, loading, locked = false }) {
         <span className="text-balance360-accent">producto digital</span>
       </h2>
       <p className="text-balance360-muted text-base max-w-2xl mb-10 leading-8">
-        BALANCE360 traduce la percepción pública de una empresa en apps, web, reviews,
-        redes sociales, Google Business y menciones orgánicas para tomar decisiones de crecimiento
-        con evidencia, incluyendo journeys críticos como apertura de cuenta corriente, tarjetas,
-        préstamos y reclamos.
+        BALANCE360 genera un balance 360 de tu producto digital para compararte con tus principales
+        competidores, detectar brechas funcionales y priorizar mejoras de alto impacto.
       </p>
       {!locked && (
         <form onSubmit={handleSubmit} className="w-full max-w-xl flex flex-col sm:flex-row gap-3">
@@ -218,7 +216,7 @@ function Hero({ onAnalyze, loading, locked = false }) {
       {locked && (
         <div className="w-full max-w-xl">
           <button type="button" className="balance360-btn w-full" disabled>
-            Inicia sesión para analizar empresas y productos
+            Inicia sesión para comenzar tu análisis
           </button>
         </div>
       )}
@@ -569,7 +567,7 @@ function OnboardingPanel({ form, loading, error, steps, onChange, onSubmit }) {
 
       <div className="space-y-6">
         <div className="balance360-card p-6">
-          <h3 className="text-balance360-text font-semibold mb-3">Qu activaremos</h3>
+          <h3 className="text-balance360-text font-semibold mb-3">Qué activaremos</h3>
           <ul className="space-y-3 text-sm text-balance360-muted leading-6">
             <li>1. Crear la empresa principal dentro de tu workspace.</li>
             <li>2. Registrar el competidor base para benchmark.</li>
@@ -582,8 +580,15 @@ function OnboardingPanel({ form, loading, error, steps, onChange, onSubmit }) {
   )
 }
 
-function Dashboard({ profile, workspace, companies, history, selectedCompanyId, onCompanyChange, onAnalyze, loading }) {
+function Dashboard({ profile, workspace, companies, history, selectedCompanyId, onCompanyChange, onAnalyze, onAnalyzeByName, loading }) {
   const selectedCompany = companies.find((item) => item.id === selectedCompanyId) || companies[0] || null
+  const [searchInput, setSearchInput] = useState('')
+
+  const handleSearchSubmit = (event) => {
+    event.preventDefault()
+    if (!searchInput.trim() || loading) return
+    onAnalyzeByName(searchInput.trim())
+  }
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-10 space-y-6">
@@ -611,6 +616,26 @@ function Dashboard({ profile, workspace, companies, history, selectedCompanyId, 
           </div>
 
           <div className="space-y-3">
+            <label className="block text-balance360-muted text-xs uppercase tracking-wider">Buscar empresa o producto</label>
+            <form className="flex flex-col md:flex-row gap-3" onSubmit={handleSearchSubmit}>
+              <input
+                className="balance360-input"
+                value={searchInput}
+                onChange={(event) => setSearchInput(event.target.value)}
+                placeholder="Ej: Yape, Cuenta Corriente BCP, Tarjeta BBVA"
+                disabled={loading}
+                maxLength={120}
+              />
+              <button className="balance360-btn whitespace-nowrap" type="submit" disabled={!searchInput.trim() || loading}>
+                {loading ? 'Analizando...' : 'Analizar ahora'}
+              </button>
+            </form>
+            <p className="text-balance360-muted text-xs">
+              Aquí puedes analizar nuevas empresas o journeys específicos sin depender de la empresa activa.
+            </p>
+          </div>
+
+          <div className="space-y-3 pt-2">
             <label className="block text-balance360-muted text-xs uppercase tracking-wider">Empresa activa</label>
             <div className="flex flex-col md:flex-row gap-3">
               <select className="balance360-input" value={selectedCompanyId || ''} onChange={(event) => onCompanyChange(event.target.value)} disabled={!companies.length || loading}>
@@ -690,7 +715,7 @@ function normalizeOnboardingError(error) {
     return 'Detectamos una configuración pendiente en base de datos (RLS). Ejecuta la migración de fix y vuelve a intentar.'
   }
   if (message.includes('row-level security') || message.includes('onboarding_states')) {
-    return 'Tu base de datos bloque el insert de onboarding por política RLS. Ejecuta la migración de onboarding y vuelve a intentar.'
+    return 'Tu base de datos bloqueó el insert de onboarding por política RLS. Ejecuta la migración de onboarding y vuelve a intentar.'
   }
   return error?.message || 'No fue posible completar el onboarding.'
 }
@@ -853,6 +878,20 @@ export default function App() {
     if (session?.user?.id) await loadContext(session.user.id, session.access_token)
   }
 
+  const handleDashboardAnalyzeByName = async (companyName) => {
+    const accessToken = session?.access_token
+    if (!accessToken) return
+
+    await balance.analyze(companyName, {
+      accessToken,
+      workspaceId: workspace?.id,
+      requestType: 'single_audit',
+      forceRefresh: true
+    })
+
+    if (session?.user?.id) await loadContext(session.user.id, session.access_token)
+  }
+
   const handleOnboardingChange = (field, value) => {
     setOnboardingForm((previous) => ({ ...previous, [field]: value }))
   }
@@ -986,6 +1025,7 @@ export default function App() {
               selectedCompanyId={selectedCompanyId}
               onCompanyChange={setSelectedCompanyId}
               onAnalyze={handleDashboardAnalyze}
+              onAnalyzeByName={handleDashboardAnalyzeByName}
               loading={balance.status === 'loading'}
             />
 
