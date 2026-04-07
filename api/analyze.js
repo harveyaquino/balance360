@@ -1,4 +1,4 @@
-﻿import { createClient } from '@supabase/supabase-js'
+import { createClient } from '@supabase/supabase-js'
 import { buildSignalsSummary, collectPublicSignals } from './lib/sources.js'
 
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || ''
@@ -24,7 +24,7 @@ const COUNTRY_HINTS = [
   { canonical: 'Uruguay', patterns: [/uruguay/i, /\buy\b/i] },
   { canonical: 'Paraguay', patterns: [/paraguay/i, /\bpy\b/i] },
   { canonical: 'Bolivia', patterns: [/bolivia/i, /\bbo\b/i] },
-  { canonical: 'Spain', patterns: [/espaÃ±a/i, /espana/i, /\bes\b/i, /spain/i] }
+  { canonical: 'Spain', patterns: [/españa/i, /espana/i, /\bes\b/i, /spain/i] }
 ]
 
 const rateLimitMap = new Map()
@@ -190,7 +190,7 @@ function normalizeAuditResult(raw, company) {
     benchmark_por_frente: normalizeFrontBenchmark(source.benchmark_por_frente),
     pasos: normalizeList(source.pasos),
     frentes: {
-      app: normalizeFront(pickFront(frentes, ['app', 'mobile_app', 'app_movil']), 'App mÃ³vil'),
+      app: normalizeFront(pickFront(frentes, ['app', 'mobile_app', 'app_movil']), 'App móvil'),
       web: normalizeFront(pickFront(frentes, ['web', 'website', 'sitio_web']), 'Web'),
       rrss: normalizeFront(pickFront(frentes, ['rrss', 'redes_sociales', 'social', 'social_media']), 'Redes sociales'),
       reviews: normalizeFront(pickFront(frentes, ['reviews', 'ratings']), 'Reviews'),
@@ -200,7 +200,7 @@ function normalizeAuditResult(raw, company) {
       ),
       organic_mentions: normalizeFront(
         pickFront(frentes, ['organic_mentions', 'organic', 'seo', 'menciones_organicas']),
-        'Menciones orgÃ¡nicas'
+        'Menciones orgánicas'
       )
     }
   }
@@ -240,16 +240,16 @@ function reconcileAuditWithSignals(audit, signals) {
     merged.frentes.google_business.score = Math.max(merged.frentes.google_business.score || 0, 55)
     merged.frentes.google_business.hallazgos = pushUnique(
       Array.isArray(merged.frentes.google_business.hallazgos) ? merged.frentes.google_business.hallazgos : [],
-      `Se detectÃ³ ficha de Maps: ${signals.google_business.place.name || 'Google Maps'}${signals.google_business.place.rating ? ` (rating ${signals.google_business.place.rating})` : ''}.`
+      `Se detectó ficha de Maps: ${signals.google_business.place.name || 'Google Maps'}${signals.google_business.place.rating ? ` (rating ${signals.google_business.place.rating})` : ''}.`
     )
   }
 
   if (signals.app?.app_store || signals.app?.play_store) {
     merged.frentes.app.score = Math.max(merged.frentes.app.score || 0, 55)
-    const appHint = signals.app?.play_store?.name || signals.app?.app_store?.name || 'app pÃºblica detectada'
+    const appHint = signals.app?.play_store?.name || signals.app?.app_store?.name || 'app pública detectada'
     merged.frentes.app.hallazgos = pushUnique(
       Array.isArray(merged.frentes.app.hallazgos) ? merged.frentes.app.hallazgos : [],
-      `Detectamos seÃ±al de app: ${appHint}.`
+      `Detectamos señal de app: ${appHint}.`
     )
   }
 
@@ -287,7 +287,7 @@ function extractTextBlocks(apiData) {
 
 function extractJson(text) {
   const match = text.match(/\{[\s\S]*\}/)
-  if (!match) throw new Error('No se encontrÃ³ JSON en la respuesta del agente')
+  if (!match) throw new Error('No se encontró JSON en la respuesta del agente')
   return JSON.parse(match[0])
 }
 
@@ -299,13 +299,13 @@ function buildSystemPrompt(signals, context = {}) {
     : 'Incluye exactamente 2 competidores directos relevantes por mercado/sector, aunque sean inferidos con prudencia.'
 
   return [
-    'Eres BALANCE360, un analista senior de inteligencia competitiva digital para grandes empresas de LatinoamÃ©rica.',
-    'Debes responder solo con JSON vÃ¡lido, sin markdown, sin comentarios y sin texto adicional.',
+    'Eres BALANCE360, un analista senior de inteligencia competitiva digital para grandes empresas de Latinoamérica.',
+    'Debes responder solo con JSON válido, sin markdown, sin comentarios y sin texto adicional.',
     `Mercado objetivo prioritario: ${marketCountry}.`,
-    'Si la marca existe en varios paÃ­ses, prioriza estrictamente el mercado objetivo.',
-    'EvalÃºa una empresa en seis frentes: app, web, rrss, reviews, google_business y organic_mentions.',
-    'Usa Ãºnicamente la evidencia entregada. No inventes presencia digital si las seÃ±ales no aparecen.',
-    'Si la evidencia es dÃ©bil o contradictoria, dilo explÃ­citamente en hallazgos y baja el score.',
+    'Si la marca existe en varios países, prioriza estrictamente el mercado objetivo.',
+    'Evalúa una empresa en seis frentes: app, web, rrss, reviews, google_business y organic_mentions.',
+    'Usa únicamente la evidencia entregada. No inventes presencia digital si las señales no aparecen.',
+    'Si la evidencia es débil o contradictoria, dilo explícitamente en hallazgos y baja el score.',
     'Cada frente debe incluir score (0 a 100), hallazgos (array) y oportunidades (array).',
     'La respuesta JSON debe usar exactamente esta estructura:',
     '{',
@@ -343,7 +343,7 @@ function buildSystemPrompt(signals, context = {}) {
     competitorsLine,
     'No uses placeholders: evita "competidor 1/2", usa nombres reales de marcas.',
     'Si no tienes certeza, infiere con prudencia y deja constancia en hallazgos u oportunidades.',
-    'MantÃ©n el lenguaje ejecutivo, concreto y Ãºtil para product managers, directores digitales y CMOs.',
+    'Mantén el lenguaje ejecutivo, concreto y útil para product managers, directores digitales y CMOs.',
     'EVIDENCIA DISPONIBLE:',
     buildSignalsSummary(signals)
   ].join('\n')
@@ -354,21 +354,21 @@ function inferFallbackCompetitors(company) {
 
   if (/scotiabank|bbva|interbank|bcp|banco|banbif/.test(key)) {
     return [
-      { name: 'BCP', score: 66, fortaleza: 'Mayor alcance digital y recordaciÃ³n de marca en banca retail.', brecha: 'Velocidad de iteraciÃ³n en experiencia mÃ³vil y comunicaciÃ³n de beneficios.' },
-      { name: 'BBVA', score: 64, fortaleza: 'Ecosistema de app y web con mejor continuidad de flujos.', brecha: 'Consistencia de reputaciÃ³n y respuesta en canales pÃºblicos.' }
+      { name: 'BCP', score: 66, fortaleza: 'Mayor alcance digital y recordación de marca en banca retail.', brecha: 'Velocidad de iteración en experiencia móvil y comunicación de beneficios.' },
+      { name: 'BBVA', score: 64, fortaleza: 'Ecosistema de app y web con mejor continuidad de flujos.', brecha: 'Consistencia de reputación y respuesta en canales públicos.' }
     ]
   }
 
   if (/claro|movistar|entel|wom|bitel|telco|telecom/.test(key)) {
     return [
-      { name: 'Movistar', score: 62, fortaleza: 'Presencia orgÃ¡nica y social mÃ¡s estable por volumen de marca.', brecha: 'Calidad percibida en soporte digital y tiempos de respuesta.' },
-      { name: 'Entel', score: 60, fortaleza: 'Mensaje comercial mÃ¡s consistente en campaÃ±as digitales.', brecha: 'Claridad de propuesta digital por segmento y autoservicio.' }
+      { name: 'Movistar', score: 62, fortaleza: 'Presencia orgánica y social más estable por volumen de marca.', brecha: 'Calidad percibida en soporte digital y tiempos de respuesta.' },
+      { name: 'Entel', score: 60, fortaleza: 'Mensaje comercial más consistente en campañas digitales.', brecha: 'Claridad de propuesta digital por segmento y autoservicio.' }
     ]
   }
 
   return [
-    { name: 'Competidor lÃ­der del sector', score: 63, fortaleza: 'Mayor madurez de marca y distribuciÃ³n digital.', brecha: 'Consistencia de experiencia y conversiÃ³n en puntos crÃ­ticos.' },
-    { name: 'Competidor retador', score: 58, fortaleza: 'EjecuciÃ³n mÃ¡s Ã¡gil en contenido y performance digital.', brecha: 'DiferenciaciÃ³n funcional visible en canales pÃºblicos.' }
+    { name: 'Competidor líder del sector', score: 63, fortaleza: 'Mayor madurez de marca y distribución digital.', brecha: 'Consistencia de experiencia y conversión en puntos críticos.' },
+    { name: 'Competidor retador', score: 58, fortaleza: 'Ejecución más ágil en contenido y performance digital.', brecha: 'Diferenciación funcional visible en canales públicos.' }
   ]
 }
 
@@ -386,7 +386,7 @@ function buildFallbackAudit(company, signals, details = '', context = {}) {
   const mapsPlace = signals?.google_business?.place || null
   const socialProfiles = Array.isArray(signals?.rrss?.profiles) ? signals.rrss.profiles : []
   const organicTopLinks = Array.isArray(signals?.organic_mentions?.topLinks) ? signals.organic_mentions.topLinks : []
-  const rootCause = 'Motor enriquecido no disponible temporalmente; usando lectura de contingencia basada en seÃ±ales pÃºblicas.'
+  const rootCause = 'Motor enriquecido no disponible temporalmente; usando lectura de contingencia basada en señales públicas.'
 
   const detectedSignalsCount = [
     Boolean(signals?.web?.found),
@@ -510,35 +510,35 @@ function buildFallbackAudit(company, signals, details = '', context = {}) {
     sector: 'General',
     mercado: normalizeText(context?.marketCountry, DEFAULT_MARKET_COUNTRY),
     score: baseScore,
-    resumen_ejecutivo: `${company} muestra seÃ±ales digitales visibles pero todavÃ­a fragmentadas. La prioridad es pasar de detecciÃ³n de presencia a ejecuciÃ³n consistente en adquisiciÃ³n, experiencia y reputaciÃ³n.`,
+    resumen_ejecutivo: `${company} muestra señales digitales visibles pero todavía fragmentadas. La prioridad es pasar de detección de presencia a ejecución consistente en adquisición, experiencia y reputación.`,
     voz_usuario: signals?.existenceLikely
       ? `BALANCE360 detecto evidencia publica inicial de ${company}. Esta lectura usa senales observables y debe tomarse como analisis operativo de contingencia.`
       : `BALANCE360 detecto evidencia publica limitada para ${company}. Mostramos una lectura de contingencia con trazas concretas de lo encontrado.`,
     gap_principal: 'Falta consolidar fuentes verificadas por frente y benchmarking competitivo para reemplazar este modo de contingencia por una lectura enriquecida completa.',
     riesgos_clave: [
       'Perder share of search y demanda incremental por baja consistencia de presencia cross-canal.',
-      'Deterioro de confianza por seÃ±ales de reputaciÃ³n no gestionadas de forma continua.',
+      'Deterioro de confianza por señales de reputación no gestionadas de forma continua.',
       'Decisiones de producto y marketing con evidencia incompleta frente a competidores.'
     ],
     palancas_crecimiento: [
-      'Orquestar narrativa Ãºnica entre web, app y canales sociales para mejorar conversiÃ³n.',
-      'Priorizar gestiÃ³n de reviews y respuesta pÃºblica para mover percepciÃ³n de servicio.',
-      'Optimizar rutas de autoservicio y onboarding en frentes con mayor fricciÃ³n visible.'
+      'Orquestar narrativa única entre web, app y canales sociales para mejorar conversión.',
+      'Priorizar gestión de reviews y respuesta pública para mover percepción de servicio.',
+      'Optimizar rutas de autoservicio y onboarding en frentes con mayor fricción visible.'
     ],
     quick_wins_30_dias: [
-      'Definir tablero semanal de seÃ±ales por frente con responsables y umbrales.',
+      'Definir tablero semanal de señales por frente con responsables y umbrales.',
       'Corregir 3 fricciones de alto impacto en web/app detectadas en hallazgos.',
-      'Implementar protocolo de respuesta pÃºblica en reviews y redes con SLA operativo.'
+      'Implementar protocolo de respuesta pública en reviews y redes con SLA operativo.'
     ],
     benchmark_competitivo: {
       posicion_relativa: competitorAverage
         ? `${company} se ubica ${baseScore >= competitorAverage ? 'en paridad relativa' : 'por debajo'} frente al promedio de 2 competidores de referencia (${competitorAverage}/100).`
-        : `${company} requiere benchmark estructurado para definir su posiciÃ³n relativa.`,
+        : `${company} requiere benchmark estructurado para definir su posición relativa.`,
       competidores: competitors,
       brechas_clave: [
-        'Menor consistencia de seÃ±al pÃºblica entre frentes crÃ­ticos.',
-        'ConversiÃ³n y experiencia digital con baja evidencia de optimizaciÃ³n continua.',
-        'GestiÃ³n reputacional menos sistemÃ¡tica que referentes del sector.'
+        'Menor consistencia de señal pública entre frentes críticos.',
+        'Conversión y experiencia digital con baja evidencia de optimización continua.',
+        'Gestión reputacional menos sistemática que referentes del sector.'
       ]
     },
     benchmark_por_frente: computeFrontBenchmark(
@@ -815,10 +815,10 @@ function isLowQualityCachedAudit(audit) {
   const stalePatterns = [
     'contingencia',
     'lectura preliminar',
-    'contexto tÃ©cnico',
+    'contexto técnico',
     'anthropic',
-    'no encontramos seÃ±ales pÃºblicas suficientes',
-    'no encontramos evidencia pÃºblica suficiente'
+    'no encontramos señales públicas suficientes',
+    'no encontramos evidencia pública suficiente'
   ]
 
   const combined = `${voice} ${gap} ${hallazgos}`
@@ -951,7 +951,7 @@ async function saveAudit(supabase, result, userId) {
     .single()
 
   if (error) {
-    console.warn('[BALANCE360] Error guardando auditorÃ­a:', error.message)
+    console.warn('[BALANCE360] Error guardando auditoría:', error.message)
     return null
   }
 
@@ -986,7 +986,7 @@ async function requestAnthropicAnalysis(apiKey, company, signals, context = {}) 
         messages: [
           {
             role: 'user',
-            content: `Genera un anÃ¡lisis ejecutivo de ${company} como producto digital para BALANCE360 usando solo la evidencia disponible.`
+            content: `Genera un análisis ejecutivo de ${company} como producto digital para BALANCE360 usando solo la evidencia disponible.`
           }
         ]
       })
@@ -1049,7 +1049,7 @@ async function handleRequest(req, res) {
   try {
     body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body
   } catch {
-    return res.status(400).json({ error: 'Body invÃ¡lido' })
+    return res.status(400).json({ error: 'Body inválido' })
   }
 
   const company = sanitizeInput(body?.company)
@@ -1059,7 +1059,7 @@ async function handleRequest(req, res) {
   const forceRefresh = body?.forceRefresh === true
 
   if (!company) {
-    return res.status(400).json({ error: 'Nombre de empresa invÃ¡lido.' })
+    return res.status(400).json({ error: 'Nombre de empresa inválido.' })
   }
 
   const supabase = getSupabaseClient()
@@ -1082,7 +1082,7 @@ async function handleRequest(req, res) {
     requestType !== 'onboarding_audit'
   ) {
     return res.status(403).json({
-      error: 'Alcanzaste el lÃ­mite de anÃ¡lisis de tu plan actual. Haz upgrade para continuar.'
+      error: 'Alcanzaste el límite de análisis de tu plan actual. Haz upgrade para continuar.'
     })
   }
 
@@ -1125,7 +1125,7 @@ async function handleRequest(req, res) {
           : (analysisContext.competitors || []).map((item) => ({
             name: item.name,
             score: normalizeScore(item.audit?.score, 0),
-            fortaleza: 'Fortaleza competitiva observada en seÃ±ales publicas.',
+            fortaleza: 'Fortaleza competitiva observada en señales publicas.',
             brecha: 'Brecha competitiva pendiente de cierre.'
           })).slice(0, 2)
       }
@@ -1174,7 +1174,7 @@ async function handleRequest(req, res) {
       status: 'completed',
       result_audit_id: savedFallback?.id || null,
       sector: fallback.sector,
-      error_message: 'Se devolviÃ³ fallback por falta de configuraciÃ³n de Anthropic',
+      error_message: 'Se devolvió fallback por falta de configuración de Anthropic',
       completed_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
     })
@@ -1225,7 +1225,7 @@ async function handleRequest(req, res) {
       updated_at: new Date().toISOString()
     })
 
-    console.error('[BALANCE360] Error en anÃ¡lisis enriquecido, devolviendo fallback:', error.message)
+    console.error('[BALANCE360] Error en análisis enriquecido, devolviendo fallback:', error.message)
     return res.status(200).json({
       ...fallback,
       audit_id: savedFallback?.id || null,

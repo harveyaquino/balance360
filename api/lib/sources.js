@@ -1,4 +1,4 @@
-﻿const USER_AGENT = 'Mozilla/5.0 (compatible; BALANCE360/0.5; +https://balance360.app)'
+const USER_AGENT = 'Mozilla/5.0 (compatible; BALANCE360/0.5; +https://balance360.app)'
 
 function normalizeWhitespace(value) {
   return String(value || '').replace(/\s+/g, ' ').trim()
@@ -403,7 +403,7 @@ export function buildSignalsSummary(signals) {
   const lines = [
     `Empresa evaluada: ${signals.company}`,
     `Mercado objetivo: ${signals.marketCountry || 'sin especificar'}`,
-    `Probabilidad de existencia pÃºblica detectable: ${signals.existenceLikely ? 'alta' : 'baja'} (${signals.confidenceScore}/100)`
+    `Probabilidad de existencia pública detectable: ${signals.existenceLikely ? 'alta' : 'baja'} (${signals.confidenceScore}/100)`
   ]
 
   lines.push(
@@ -414,7 +414,7 @@ export function buildSignalsSummary(signals) {
 
   lines.push(
     signals.google_business?.found
-      ? `Google Business: seÃ±al real detectada (${signals.google_business.place?.name || 'ficha encontrada'})`
+      ? `Google Business: señal real detectada (${signals.google_business.place?.name || 'ficha encontrada'})`
       : 'Google Business: no encontrada'
   )
 
@@ -431,10 +431,10 @@ export function buildSignalsSummary(signals) {
   )
 
   lines.push(`Redes sociales: ${signals.rrss.count || 0} perfiles detectados`)
-  lines.push(`Menciones orgÃ¡nicas: ${signals.organic_mentions.mentionsCount || 0} resultados visibles`)
+  lines.push(`Menciones orgánicas: ${signals.organic_mentions.mentionsCount || 0} resultados visibles`)
 
   if (signals.organic_mentions.snippets?.length) {
-    lines.push('Snippets orgÃ¡nicos relevantes:')
+    lines.push('Snippets orgánicos relevantes:')
     signals.organic_mentions.snippets.slice(0, 3).forEach((item, index) => {
       lines.push(`${index + 1}. ${item}`)
     })
