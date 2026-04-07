@@ -469,7 +469,7 @@ function Results({ data, fromCache, onReset }) {
   )
 }
 
-function AuthPanel({ mode, form, loading, error, message, onModeChange, onChange, onSubmit }) {
+function AuthPanel({ mode, form, loading, error, message, onModeChange, onChange, onSubmit, onGoogleSignIn }) {
   return (
     <div className="balance360-card p-6 w-full max-w-md">
       <div className="flex gap-2 mb-6">
@@ -488,6 +488,19 @@ function AuthPanel({ mode, form, loading, error, message, onModeChange, onChange
         {mode === 'signup'
           ? 'Regstrate para crear tu workspace, configurar tu empresa y lanzar el primer anlisis.'
           : 'Usa tu cuenta para continuar con onboarding, historial y anlisis persistentes.'}
+      </p>
+
+      <button
+        type="button"
+        className="balance360-btn w-full mb-3"
+        onClick={onGoogleSignIn}
+        disabled={loading}
+      >
+        {loading ? 'Procesando...' : 'Continuar con Google'}
+      </button>
+
+      <p className="text-balance360-muted text-xs text-center mb-3">
+        o ingresa con correo corporativo
       </p>
 
       <form className="space-y-3" onSubmit={onSubmit}>
@@ -820,6 +833,30 @@ export default function App() {
     }
   }
 
+  const handleGoogleSignIn = async () => {
+    setAuthLoading(true)
+    setAuthError('')
+    setAuthMessage('')
+
+    try {
+      const redirectTo = window.location.origin
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo,
+          queryParams: {
+            prompt: 'select_account'
+          }
+        }
+      })
+
+      if (error) throw error
+    } catch (error) {
+      setAuthError(error.message || 'No fue posible iniciar sesion con Google.')
+      setAuthLoading(false)
+    }
+  }
+
   const handleSignOut = async () => {
     await supabase.auth.signOut()
     balance.reset()
@@ -941,6 +978,7 @@ export default function App() {
                 onModeChange={setAuthMode}
                 onChange={handleAuthChange}
                 onSubmit={handleAuthSubmit}
+                onGoogleSignIn={handleGoogleSignIn}
               />
             </section>
 
