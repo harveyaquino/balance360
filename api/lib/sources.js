@@ -120,12 +120,77 @@ function scoreFromSignals({ hasWebsite, organicCount, hasAppStore, hasPlayStore,
   return Math.max(10, Math.min(95, score))
 }
 
-function pickOfficialWebsite(company, search) {
-  const slug = company.toLowerCase().replace(/[^a-z0-9]+/g, '')
-  return search.links.find((item) => {
-    const href = item.href.toLowerCase()
-    return !href.includes('duckduckgo.com') && (href.includes(slug) || item.title.toLowerCase().includes(company.toLowerCase()))
-  }) || null
+function toHostname(url) {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '').toLowerCase()
+  } catch {
+    return ''
+  }
+}
+
+function hasHeavyNonLatin(text) {
+  const value = String(text || '')
+  if (!value) return false
+  const nonLatin = (value.match(/[^\u0000-\u024F\s0-9.,:;!?'"()\-_/]/g) || []).length
+  const letters = (value.match(/[A-Za-z\u00C0-\u024F]/g) || []).length
+  return nonLatin > 6 && nonLatin > letters
+}
+
+function countryToken(country) {
+  const normalized = normalizeName(country)
+  if (normalized.includes('peru')) return ['peru', 'pe']
+  if (normalized.includes('chile')) return ['chile', 'cl']
+  if (normalized.includes('colombia')) return ['colombia', 'co']
+  if (normalized.includes('mexico')) return ['mexico', 'mx']
+  if (normalized.includes('argentina')) return ['argentina', 'ar']
+  return []
+}
+
+function pickOfficialWebsite(company, search, marketCountry = '') {
+  const slug = normalizeName(company).replace(/\s+/g, '')
+  const tokens = tokenize(company)
+  const cTokens = countryToken(marketCountry)
+
+  const blockedDomains = ['wikipedia.org', 'facebook.com', 'instagram.com', 'linkedin.com', 'x.com', 'twitter.com', 'youtube.com', 'tiktok.com']
+
+  const ranked = search.links
+    .map((item) => {
+      const href = String(item.href || '').toLowerCase()
+      const title = String(item.title || '')
+      const titleLower = title.toLowerCase()
+      const host = toHostname(href)
+      if (!host || href.includes('duckduckgo.com')) return null
+      if (blockedDomains.some((domain) => host.includes(domain))) return null
+      if (hasHeavyNonLatin(title)) return null
+
+      const tokenMatches = tokens.filter((token) => host.includes(token) || titleLower.includes(token)).length
+      const baseScore = overlapScore(company, `${host} ${title}`)
+      const hostScore = host.includes(slug) ? 0.55 : 0
+      const tokenScore = tokenMatches * 0.18
+      const countryScore = cTokens.some((token) => host.includes(`.${token}`) || host.includes(`-${token}`) || titleLower.includes(token)) ? 0.15 : 0
+      const score = baseScore + hostScore + tokenScore + countryScore
+
+      return { ...item, host, score }
+    })
+    .filter(Boolean)
+    .sort((a, b) => b.score - a.score)
+
+  return ranked[0]?.score >= 0.32 ? ranked[0] : null
+}
+
+async function fetchWebsiteMetadata(url) {
+  if (!url) return { title: '', description: '' }
+  try {
+    const html = await fetchText(url)
+    const title = html.match(/<title>([\s\S]*?)<\/title>/i)?.[1] || ''
+    const description = html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i)?.[1] || ''
+    return {
+      title: stripHtml(title),
+      description: stripHtml(description)
+    }
+  } catch {
+    return { title: '', description: '' }
+  }
 }
 
 function pickSocialLinks(search) {
@@ -163,12 +228,13 @@ async function getWebsiteEvidence(company, marketCountry = '') {
   }
 
   const search = await searchDuckDuckGo(withMarket(`${company} sitio oficial`, marketCountry))
-  const official = pickOfficialWebsite(company, search)
+  const official = pickOfficialWebsite(company, search, marketCountry)
+  const metadata = await fetchWebsiteMetadata(official?.href)
   return {
     found: Boolean(official),
     url: official?.href || null,
-    title: official?.title || '',
-    description: search.snippets[0] || '',
+    title: metadata.title || official?.title || '',
+    description: metadata.description || '',
     source: official ? 'search' : 'none'
   }
 }
