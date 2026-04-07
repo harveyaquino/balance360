@@ -249,6 +249,37 @@ async function getOrganicEvidence(company, marketCountry = '') {
   }
 }
 
+function extractNewsItems(xml) {
+  const items = []
+  const blocks = String(xml || '').match(/<item>[\s\S]*?<\/item>/gi) || []
+
+  for (const block of blocks.slice(0, 10)) {
+    const title = stripHtml(block.match(/<title>([\s\S]*?)<\/title>/i)?.[1] || '')
+    const link = stripHtml(block.match(/<link>([\s\S]*?)<\/link>/i)?.[1] || '')
+    const source = stripHtml(block.match(/<source[^>]*>([\s\S]*?)<\/source>/i)?.[1] || '')
+    if (!title) continue
+    items.push({ title, link, source })
+  }
+
+  return items
+}
+
+async function getNewsEvidence(company, marketCountry = '') {
+  try {
+    const query = encodeURIComponent(withMarket(company, marketCountry))
+    const url = `https://news.google.com/rss/search?q=${query}&hl=es-419&gl=PE&ceid=PE:es-419`
+    const xml = await fetchText(url)
+    const items = extractNewsItems(xml)
+    return {
+      found: items.length > 0,
+      mentionsCount: items.length,
+      topItems: items.slice(0, 5)
+    }
+  } catch (error) {
+    return { found: false, mentionsCount: 0, topItems: [], error: error.message }
+  }
+}
+
 async function getSocialEvidence(company, marketCountry = '') {
   const search = await searchDuckDuckGo(withMarket(`${company} linkedin instagram facebook x`, marketCountry))
   const links = pickSocialLinks(search)
@@ -400,9 +431,10 @@ async function getPlayStoreEvidence(company, marketCountry = '') {
 
 export async function collectPublicSignals(company, options = {}) {
   const marketCountry = normalizeWhitespace(options.marketCountry || '')
-  const [website, organic, social, maps, appStore, playStore] = await Promise.all([
+  const [website, organic, news, social, maps, appStore, playStore] = await Promise.all([
     getWebsiteEvidence(company, marketCountry),
     getOrganicEvidence(company, marketCountry),
+    getNewsEvidence(company, marketCountry),
     getSocialEvidence(company, marketCountry),
     getGooglePlacesEvidence(company, marketCountry),
     getAppStoreEvidence(company, marketCountry),
@@ -411,7 +443,7 @@ export async function collectPublicSignals(company, options = {}) {
 
   const confidenceScore = scoreFromSignals({
     hasWebsite: website.found,
-    organicCount: organic.mentionsCount,
+    organicCount: organic.mentionsCount + Math.min(4, news.mentionsCount || 0),
     hasAppStore: appStore.found,
     hasPlayStore: playStore.found,
     socialCount: social.count,
@@ -425,6 +457,7 @@ export async function collectPublicSignals(company, options = {}) {
     existenceLikely: confidenceScore >= 36,
     web: website,
     organic_mentions: organic,
+    news_mentions: news,
     rrss: social,
     google_business: {
       found: maps.found,
@@ -460,7 +493,8 @@ export async function collectPublicSignals(company, options = {}) {
       playStore: playStore.app?.url || null,
       maps: maps.place?.mapsUrl || null,
       socialProfiles: social.profiles || [],
-      organicTopLinks: organic.topLinks || []
+      organicTopLinks: organic.topLinks || [],
+      newsTopItems: news.topItems || []
     }
   }
 }
@@ -498,6 +532,7 @@ export function buildSignalsSummary(signals) {
 
   lines.push(`Redes sociales: ${signals.rrss.count || 0} perfiles detectados`)
   lines.push(`Menciones orgÃ¡nicas: ${signals.organic_mentions.mentionsCount || 0} resultados visibles`)
+  lines.push(`Noticias recientes: ${signals.news_mentions?.mentionsCount || 0} resultados en Google News`)
 
   if (signals.organic_mentions.snippets?.length) {
     lines.push('Snippets orgÃ¡nicos relevantes:')

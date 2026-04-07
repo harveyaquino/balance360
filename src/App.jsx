@@ -258,6 +258,7 @@ function EvidencePanel({ data }) {
 
   const socialCount = Array.isArray(evidence.socialProfiles) ? evidence.socialProfiles.length : 0
   const organicCount = Array.isArray(evidence.organicTopLinks) ? evidence.organicTopLinks.length : 0
+  const newsCount = Array.isArray(evidence.newsTopItems) ? evidence.newsTopItems.length : 0
 
   return (
     <div className="balance360-card p-5 mb-6">
@@ -290,6 +291,11 @@ function EvidencePanel({ data }) {
         <div className="balance360-surface-card">
           <p className="text-balance360-muted text-[11px] uppercase tracking-wider mb-1">Menciones orgnicas</p>
           <p className="text-balance360-text text-sm">{organicCount} resultados filtrados</p>
+        </div>
+
+        <div className="balance360-surface-card">
+          <p className="text-balance360-muted text-[11px] uppercase tracking-wider mb-1">Google News</p>
+          <p className="text-balance360-text text-sm">{newsCount} noticias recientes</p>
         </div>
       </div>
     </div>

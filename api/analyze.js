@@ -874,6 +874,7 @@ function deriveFrontScoresFromSignals(signals) {
   const gbRating = Number(signals?.google_business?.place?.rating || 0)
   const gbRatingCount = Number(signals?.google_business?.place?.ratingCount || 0)
   const organicMentions = Number(signals?.organic_mentions?.mentionsCount || 0)
+  const newsMentions = Number(signals?.news_mentions?.mentionsCount || 0)
 
   const app = appFound
     ? normalizeScore(
@@ -912,7 +913,12 @@ function deriveFrontScoresFromSignals(signals) {
     : 20
 
   const organic = organicMentions
-    ? normalizeScore(16 + Math.min(40, Math.log10(Math.max(1, organicMentions + 1)) * 16), 16)
+    ? normalizeScore(
+      16 +
+      Math.min(32, Math.log10(Math.max(1, organicMentions + 1)) * 14) +
+      Math.min(12, Math.log10(Math.max(1, newsMentions + 1)) * 8),
+      16
+    )
     : 16
 
   return {
@@ -923,6 +929,24 @@ function deriveFrontScoresFromSignals(signals) {
     google_business: googleBusiness,
     organic_mentions: organic
   }
+}
+
+function buildCompetitorEvidenceLine(competitor) {
+  const signals = competitor?.signals
+  if (!signals) return ''
+  const reviews =
+    Number(signals?.reviews?.sources?.app_store?.ratingCount || 0) +
+    Number(signals?.reviews?.sources?.play_store?.ratingCount || 0) +
+    Number(signals?.reviews?.sources?.maps?.ratingCount || 0)
+  const social = Number(signals?.rrss?.count || 0)
+  const news = Number(signals?.news_mentions?.mentionsCount || 0)
+  const organic = Number(signals?.organic_mentions?.mentionsCount || 0)
+  const chunks = []
+  if (reviews > 0) chunks.push(`reviews:${reviews}`)
+  if (social > 0) chunks.push(`social:${social}`)
+  if (news > 0) chunks.push(`news:${news}`)
+  if (organic > 0) chunks.push(`organic:${organic}`)
+  return chunks.length ? ` Senales (${chunks.join(', ')}).` : ''
 }
 
 function estimateScoreFromSignals(signals) {
@@ -1096,14 +1120,15 @@ function buildCompetitiveNarrative(targetAudit, competitorsWithAudits) {
     const openGap = pickKeyGap(targetAudit?.frentes, derivedFrentes, 'target_advantage')
     const extremes = summarizeFrontExtremes(derivedFrentes)
 
+    const evidenceLine = buildCompetitorEvidenceLine(item)
     const fortaleza = best
       ? best.delta > 0
-        ? `Ventaja visible en ${best.label} (+${best.delta} vs nosotros).`
+        ? `Ventaja visible en ${best.label} (+${best.delta} vs nosotros).${evidenceLine}`
         : (extremes.top
-          ? `Fortaleza principal en ${extremes.top.label} (score ${extremes.top.score}).`
+          ? `Fortaleza principal en ${extremes.top.label} (score ${extremes.top.score}).${evidenceLine}`
           : `Paridad competitiva en ${best.label}.`)
       : (extremes.top
-        ? `Fortaleza principal en ${extremes.top.label} (score ${extremes.top.score}).`
+        ? `Fortaleza principal en ${extremes.top.label} (score ${extremes.top.score}).${evidenceLine}`
         : 'Fortaleza competitiva visible en presencia digital.')
 
     const brecha = openGap
