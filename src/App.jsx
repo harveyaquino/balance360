@@ -165,11 +165,12 @@ function Header({ session, workspaceName, onSignOut }) {
   )
 }
 
-function Hero({ onAnalyze, loading }) {
+function Hero({ onAnalyze, loading, locked = false }) {
   const [input, setInput] = useState('')
 
   const handleSubmit = (event) => {
     event.preventDefault()
+    if (locked) return
     if (input.trim() && !loading) onAnalyze(input)
   }
 
@@ -189,26 +190,36 @@ function Hero({ onAnalyze, loading }) {
         BALANCE360 resume la percepcin pblica de una empresa en apps, web, reviews,
         redes sociales, Google Business y menciones orgnicas para darte una lectura ejecutiva.
       </p>
-      <form onSubmit={handleSubmit} className="w-full max-w-xl flex flex-col sm:flex-row gap-3">
-        <input
-          type="text"
-          className="balance360-input"
-          placeholder="Ej: BCP, Falabella, Claro..."
-          value={input}
-          onChange={(event) => setInput(event.target.value)}
-          maxLength={120}
-          disabled={loading}
-          autoFocus
-          aria-label="Nombre de empresa"
-        />
-        <button
-          type="submit"
-          className="balance360-btn whitespace-nowrap"
-          disabled={!input.trim() || loading}
-        >
-          {loading ? 'Analizando...' : 'Analizar ->'}
-        </button>
-      </form>
+      {!locked && (
+        <form onSubmit={handleSubmit} className="w-full max-w-xl flex flex-col sm:flex-row gap-3">
+          <input
+            type="text"
+            className="balance360-input"
+            placeholder="Ej: BCP, Falabella, Claro..."
+            value={input}
+            onChange={(event) => setInput(event.target.value)}
+            maxLength={120}
+            disabled={loading}
+            autoFocus
+            aria-label="Nombre de empresa"
+          />
+          <button
+            type="submit"
+            className="balance360-btn whitespace-nowrap"
+            disabled={!input.trim() || loading}
+          >
+            {loading ? 'Analizando...' : 'Analizar ->'}
+          </button>
+        </form>
+      )}
+
+      {locked && (
+        <div className="w-full max-w-xl">
+          <button type="button" className="balance360-btn w-full" disabled>
+            Inicia sesion para analizar empresas
+          </button>
+        </div>
+      )}
       <p className="text-balance360-muted text-xs mt-4">
         Bancos  Retail  Telco  Seguros  FinTech
       </p>
@@ -862,10 +873,6 @@ export default function App() {
     balance.reset()
   }
 
-  const handleGuestAnalyze = async (company) => {
-    await balance.analyze(company)
-  }
-
   const handleDashboardAnalyze = async (company, options = {}) => {
     const accessToken = session?.access_token
     if (!accessToken) return
@@ -967,7 +974,7 @@ export default function App() {
           <>
             <section className="max-w-6xl mx-auto px-4 py-10 grid lg:grid-cols-[1.15fr,0.85fr] gap-6 items-start">
               <div className="balance360-card">
-                <Hero onAnalyze={handleGuestAnalyze} loading={balance.status === 'loading'} />
+                <Hero onAnalyze={() => {}} loading={false} locked />
               </div>
               <AuthPanel
                 mode={authMode}
@@ -981,22 +988,6 @@ export default function App() {
                 onGoogleSignIn={handleGoogleSignIn}
               />
             </section>
-
-            {balance.status === 'loading' && (
-              <div className="max-w-5xl mx-auto px-4 pb-6">
-                <AgentSteps steps={balance.steps} loading />
-              </div>
-            )}
-
-            {balance.status === 'error' && (
-              <div className="max-w-5xl mx-auto px-4 pb-6">
-                <MessageCard>{balance.error}</MessageCard>
-              </div>
-            )}
-
-            {balance.status === 'success' && resultData && (
-              <Results data={resultData} fromCache={balance.fromCache} onReset={balance.reset} />
-            )}
           </>
         )}
 
