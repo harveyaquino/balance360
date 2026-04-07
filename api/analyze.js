@@ -13,6 +13,7 @@ const ANTHROPIC_FALLBACK_MODELS = (process.env.ANTHROPIC_MODEL_FALLBACKS || '')
   .map((model) => model.trim())
   .filter(Boolean)
 const DEFAULT_MARKET_COUNTRY = process.env.DEFAULT_MARKET_COUNTRY || 'Peru'
+const WEB_USER_AGENT = 'Mozilla/5.0 (compatible; BALANCE360/0.6; +https://balance360.app)'
 
 const COUNTRY_HINTS = [
   { canonical: 'Peru', patterns: [/peru/i, /\bpe\b/i] },
@@ -388,7 +389,7 @@ function inferFallbackCompetitors(company, marketCountry = DEFAULT_MARKET_COUNTR
   const key = String(company || '').toLowerCase()
   const market = String(marketCountry || DEFAULT_MARKET_COUNTRY).toLowerCase()
   const isBanking = /scotiabank|bbva|interbank|bcp|banco|banbif|pichincha/.test(key)
-  const isWalletOrFintech = /yape|plin|tunki|bim|fintech|billetera|wallet|pagos?/.test(key)
+  const isWalletOrFintech = /yape|plin|plim|tunki|bim|fintech|billetera|wallet|pagos?/.test(key)
   const isTelco = /claro|movistar|entel|wom|bitel|telco|telecom/.test(key)
 
   if (isWalletOrFintech) {
@@ -399,7 +400,7 @@ function inferFallbackCompetitors(company, marketCountry = DEFAULT_MARKET_COUNTR
           { name: 'Tunki', score: 55, fortaleza: 'Propuesta simple para pagos y transferencia de bajo esfuerzo.', brecha: 'Alcance de ecosistema y recordacion de marca frente a lideres.' }
         ]
       }
-      if (/plin/.test(key)) {
+      if (/plin|plim/.test(key)) {
         return [
           { name: 'Yape', score: 68, fortaleza: 'Mayor traccion de uso diario y presencia digital de marca.', brecha: 'Gestion de percepcion en soporte y fricciones operativas visibles.' },
           { name: 'Tunki', score: 55, fortaleza: 'Experiencia de uso sencilla para transacciones frecuentes.', brecha: 'Cobertura y adopcion comercial menor frente a lideres.' }
@@ -832,6 +833,17 @@ async function buildAnalysisContext({
   }
 
   if (baseCompetitors.length < 2) {
+    const discovered = await discoverCompetitorsFromWeb(companyName, marketCountry)
+    for (const candidate of discovered) {
+      if (baseCompetitors.length >= 4) break
+      if (!candidate) continue
+      if (!baseCompetitors.some((item) => item.name.toLowerCase() === candidate.toLowerCase())) {
+        baseCompetitors.push({ name: candidate, slug: slugify(candidate), source: 'web_discovery' })
+      }
+    }
+  }
+
+  if (baseCompetitors.length < 2) {
     for (const fallback of inferFallbackCompetitors(companyName, marketCountry)) {
       if (baseCompetitors.length >= 2) break
       if (!baseCompetitors.some((item) => item.name.toLowerCase() === fallback.name.toLowerCase())) {
@@ -841,7 +853,7 @@ async function buildAnalysisContext({
   }
 
   const competitors = []
-  for (const item of baseCompetitors.slice(0, 2)) {
+  for (const item of baseCompetitors.slice(0, 4)) {
     const audit = await getCompetitorLatestAudit(supabase, item.slug)
     let signals = null
     if (!audit) {
@@ -850,9 +862,22 @@ async function buildAnalysisContext({
     competitors.push({ ...item, audit, signals })
   }
 
+  const ranked = competitors
+    .map((item) => ({
+      ...item,
+      quality: normalizeScore(
+        item.audit?.score ??
+        item.signals?.confidenceScore ??
+        0,
+        0
+      )
+    }))
+    .sort((a, b) => b.quality - a.quality)
+    .slice(0, 2)
+
   return {
     marketCountry,
-    competitors
+    competitors: ranked
   }
 }
 
@@ -1026,6 +1051,89 @@ function getCompetitorFrontScore(competitor, key) {
     return Number.isFinite(fromSignals) ? fromSignals : null
   }
   return null
+}
+
+function normalizeCompetitorText(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function extractDuckLinks(html) {
+  const links = []
+  const pattern = /<a[^>]+class="[^"]*result__a[^"]*"[^>]+>([\s\S]*?)<\/a>/gi
+  let match
+  while ((match = pattern.exec(String(html || ''))) && links.length < 12) {
+    const text = String(match[1] || '')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&amp;/g, '&')
+      .replace(/&#39;/g, "'")
+      .replace(/\s+/g, ' ')
+      .trim()
+    if (text) links.push(text)
+  }
+  return links
+}
+
+function scoreCandidateBrands(company, marketCountry, texts) {
+  const stopwords = new Set([
+    'competidores', 'competidor', 'competencia', 'alternativas', 'alternativa', 'vs',
+    'peru', 'chile', 'colombia', 'mexico', 'argentina', 'ecuador', 'spain', 'espana',
+    'banco', 'empresa', 'empresas', 'digital', 'producto', 'servicio', 'mejor', 'mejores',
+    'ranking', 'analisis', 'review', 'reviews', 'noticias', 'news', 'official', 'sitio'
+  ])
+
+  const companyTokens = new Set(normalizeCompetitorText(company).split(' ').filter(Boolean))
+  const marketTokens = new Set(normalizeCompetitorText(marketCountry).split(' ').filter(Boolean))
+  const counts = new Map()
+
+  for (const text of texts) {
+    const tokens = normalizeCompetitorText(text).split(' ').filter((token) => token.length >= 3)
+    for (const token of tokens) {
+      if (stopwords.has(token)) continue
+      if (companyTokens.has(token)) continue
+      if (marketTokens.has(token)) continue
+      if (/^\d+$/.test(token)) continue
+      counts.set(token, (counts.get(token) || 0) + 1)
+    }
+  }
+
+  return [...counts.entries()]
+    .filter(([, score]) => score >= 2)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 6)
+    .map(([token]) => token.length <= 4 ? token.toUpperCase() : `${token[0].toUpperCase()}${token.slice(1)}`)
+}
+
+async function discoverCompetitorsFromWeb(company, marketCountry) {
+  const queries = [
+    `${company} competidores ${marketCountry}`,
+    `${company} alternativas ${marketCountry}`,
+    `${company} vs ${marketCountry}`
+  ]
+  const texts = []
+
+  for (const query of queries) {
+    try {
+      const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`
+      const response = await fetch(url, {
+        headers: {
+          'User-Agent': WEB_USER_AGENT,
+          Accept: 'text/html,application/xhtml+xml'
+        }
+      })
+      if (!response.ok) continue
+      const html = await response.text()
+      texts.push(...extractDuckLinks(html))
+    } catch {
+      continue
+    }
+  }
+
+  if (!texts.length) return []
+  return scoreCandidateBrands(company, marketCountry, texts)
 }
 
 function summarizeFrontExtremes(frentes) {
