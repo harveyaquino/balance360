@@ -592,7 +592,48 @@ function Dashboard({ profile, workspace, companies, history, selectedCompanyId, 
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-10 space-y-6">
-      <section className="grid lg:grid-cols-[1.08fr,0.92fr] gap-6">
+      <section className="balance360-card p-6 md:p-7">
+        <div className="flex items-start justify-between gap-4 flex-wrap mb-4">
+          <div>
+            <p className="text-balance360-accent text-xs font-mono uppercase tracking-widest mb-2">Analizador principal</p>
+            <h3 className="text-balance360-text text-2xl font-semibold mb-2">Buscar empresa o producto</h3>
+            <p className="text-balance360-muted text-sm">
+              Compara marcas y journeys críticos como cuenta corriente, tarjetas, préstamos y reclamos.
+            </p>
+          </div>
+          <span className="balance360-tag text-balance360-accent">BALANCE360 SEARCH</span>
+        </div>
+
+        <form className="grid lg:grid-cols-[1fr,220px] gap-3 mb-3" onSubmit={handleSearchSubmit}>
+          <input
+            className="balance360-input h-12"
+            value={searchInput}
+            onChange={(event) => setSearchInput(event.target.value)}
+            placeholder="Ej: Yape, Cuenta Corriente BCP, Tarjeta BBVA, Préstamo Interbank"
+            disabled={loading}
+            maxLength={120}
+          />
+          <button className="balance360-btn h-12" type="submit" disabled={!searchInput.trim() || loading}>
+            {loading ? 'Analizando...' : 'Analizar ahora'}
+          </button>
+        </form>
+
+        <div className="flex flex-wrap gap-2">
+          {['Cuenta Corriente BCP', 'Tarjeta BBVA', 'Yape', 'Reclamos Interbank'].map((example) => (
+            <button
+              key={example}
+              type="button"
+              className="balance360-chip"
+              onClick={() => setSearchInput(example)}
+              disabled={loading}
+            >
+              {example}
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section className="grid lg:grid-cols-[1.08fr,0.92fr] gap-6 items-start">
         <div className="balance360-card p-8">
           <p className="text-balance360-accent text-xs font-mono uppercase tracking-widest mb-3">Dashboard personal</p>
           <h2 className="text-3xl font-semibold text-balance360-text mb-3">
@@ -613,26 +654,6 @@ function Dashboard({ profile, workspace, companies, history, selectedCompanyId, 
               <p className="text-balance360-muted text-xs uppercase tracking-wider mb-1">Próximo reset</p>
               <p className="text-balance360-text font-semibold">{formatDate(profile?.reset_at)}</p>
             </div>
-          </div>
-
-          <div className="space-y-3">
-            <label className="block text-balance360-muted text-xs uppercase tracking-wider">Buscar empresa o producto</label>
-            <form className="flex flex-col md:flex-row gap-3" onSubmit={handleSearchSubmit}>
-              <input
-                className="balance360-input"
-                value={searchInput}
-                onChange={(event) => setSearchInput(event.target.value)}
-                placeholder="Ej: Yape, Cuenta Corriente BCP, Tarjeta BBVA"
-                disabled={loading}
-                maxLength={120}
-              />
-              <button className="balance360-btn whitespace-nowrap" type="submit" disabled={!searchInput.trim() || loading}>
-                {loading ? 'Analizando...' : 'Analizar ahora'}
-              </button>
-            </form>
-            <p className="text-balance360-muted text-xs">
-              Aquí puedes analizar nuevas empresas o journeys específicos sin depender de la empresa activa.
-            </p>
           </div>
 
           <div className="space-y-3 pt-2">
@@ -664,15 +685,18 @@ function Dashboard({ profile, workspace, companies, history, selectedCompanyId, 
         </div>
 
         <div className="balance360-card p-6">
-          <h3 className="text-balance360-text font-semibold mb-4">Historial reciente</h3>
-          <div className="space-y-3">
+          <div className="flex items-center justify-between gap-3 mb-4">
+            <h3 className="text-balance360-text font-semibold">Historial reciente</h3>
+            <span className="balance360-tag text-balance360-accent">{history.length} registros</span>
+          </div>
+          <div className="space-y-3 max-h-[560px] overflow-y-auto pr-1">
             {history.length === 0 && (
               <p className="text-balance360-muted text-sm leading-6">
                 Todavía no hay auditorías guardadas para este usuario.
               </p>
             )}
             {history.map((item) => (
-              <div key={item.id} className="balance360-surface-card">
+              <div key={item.id} className="balance360-surface-card hover:border-balance360-accent/30 transition-colors">
                 <div className="flex items-center justify-between gap-3 mb-1">
                   <p className="text-balance360-text font-semibold">{safeText(item.company)}</p>
                   <span className="text-balance360-accent font-mono text-sm">{item.score}</span>
